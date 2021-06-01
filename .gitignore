@@ -1,0 +1,8 @@
+# Ignore a test folder and a test Python program
+test.py
+tests/
+# PyCharm stuff
+.idea
+__pycache__
+# Delete and database file created
+*.db
