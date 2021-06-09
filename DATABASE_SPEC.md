@@ -17,6 +17,7 @@ specific component type (like resistors, ADC, etc) will have its own SQL table.
 |id|INTEGER PRIMARY KEY AUTOINCREMENT| Each row in the database will contain an unique SQL ID|
 |stock| INT NOT NULL| The number of parts in stock |
 |Manufacturer|VARCHAR| The manufacturer of the component|
+|package|VARCHAR NOT NULL| The part's physical package|
 |comments|MEDIUMTEXT| A user comment|
 
 #### Resistor Table:
@@ -24,9 +25,17 @@ specific component type (like resistors, ADC, etc) will have its own SQL table.
 |---|---|---|
 |resistance|FLOAT NOT NULL| The resistor's resistance|
 |tolerance|FLOAT| The resistor's tolerance as a float (so a 5% resistor will be stored as 5|
-|package|VARCHAR NOT NULL| The resistor's physical package|
 |power|FLOAT| The resistor's power rating in W|
 
+#### Capacitor Table:
+|Name|SQL Type|Description|
+|---|---|---|
+|capacitance|FLOAT NOT NULL| The capacitor's capacitance|
+|tolerance|FLOAT| The capacitor's tolerance as a float (so a 5% resistor will be stored as 5|
+|power|FLOAT| The capacitor's power rating in W|
+|voltage|FLOAT| The capacitor's maximum voltage rating|
+|temp_coeff|VARCHAR(20)| The capacitor's temperature coefficient|
+|type|VARCHAR(20)| The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)|
 
 ## Projects:
 TODO
