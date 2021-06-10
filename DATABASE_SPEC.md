@@ -37,5 +37,17 @@ specific component type (like resistors, ADC, etc) will have its own SQL table.
 |temp_coeff|VARCHAR(20)| The capacitor's temperature coefficient|
 |type|VARCHAR(20)| The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)|
 
+#### Microcontroller Table:
+|Name|SQL Type|Description|
+|---|---|---|
+|core_size|VARCHAR| The core size of the microcontroller (8-bit, 16-bit, 32-bit, etc)|
+|architecture|VARCHAR| The architecture of the mcu's core (AVR, ARM M0, etc)|
+|max_clock|INT| The maximum clock speed|
+|max_voltage|FLOAT| The maximum voltage allowed on the mcu|
+|min_voltage|FLOAT| The minimum voltage needed for the mcu to work|
+|flash_size|INT| The flash size|
+|ram_size|INT| The RAM size|
+|eeprom_size|INT| The EEPROM size if applicable|
+
 ## Projects:
 TODO
