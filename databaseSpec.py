@@ -8,33 +8,34 @@ eedata_generic_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'db_type': "INT NOT NULL", 'shows_as': "normal", 'required': True, },
     {'db_name': 'manufacturer', 'showcase_name': 'Manufacturer', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
     {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
-    {'db_name': 'package', "showcase_name": "Package", "db_type": "VARCHAR(20) NOT NULL", "shows_as_type": "normal", 'required': True, },
-    {'db_name': 'comments', "showcase_name": "Comments", "db_type": "MEDIUMTEXT", "shows_as_type": "normal", 'required': False, },
+    {'db_name': 'package', "showcase_name": "Package", "db_type": "VARCHAR(20) NOT NULL", "shows_as": "normal", 'required': True, },
+    {'db_name': 'comments', "showcase_name": "Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
 ]
 
 eedata_resistors_spec = eedata_generic_spec + [
-    {'db_name': 'resistance', "showcase_name": "Resistance", "db_type": "FLOAT NOT NULL", "shows_as_type": "engineering", 'required': True, },
-    {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as_type": "percentage", 'required': False, },
-    {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'show_as_type': 'normal', 'required': False, }
+    {'db_name': 'resistance', "showcase_name": "Resistance", "db_type": "FLOAT NOT NULL", "shows_as": "engineering", 'required': True, },
+    {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
+    {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, }
 ]
+eedata_resistor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'resistance', 'tolerance', 'power', 'package', 'comments']
 
 eedata_capacitor_spec = eedata_generic_spec + [
-    {'db_name': 'capacitance', 'showcase_name': "Capacitance", 'db_type': "FLOAT NOT NULL", 'show_as_type': "engineering", 'required': True, },
-    {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as_type": "percentage", 'required': False, },
-    {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'show_as_type': 'normal', 'required': False, },
-    {'db_name': 'voltage', "showcase_name": "Voltage Rating", 'db_type': "FLOAT", 'show_as_type': 'normal', 'required': False, },
-    {'db_name': 'temp_coeff', "showcase_name": "Temperature Coefficient", 'db_type': "VARCHAR(20)", 'show_as_type': 'normal', 'required': False, },
+    {'db_name': 'capacitance', 'showcase_name': "Capacitance", 'db_type': "FLOAT NOT NULL", 'shows_as': "engineering", 'required': True, },
+    {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
+    {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, },
+    {'db_name': 'voltage', "showcase_name": "Voltage Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, },
+    {'db_name': 'temp_coeff', "showcase_name": "Temperature Coefficient", 'db_type': "VARCHAR(20)", 'shows_as': 'normal', 'required': False, },
 ]
 
 eedata_microcontroller_spec = eedata_generic_spec + [
-    {'db_name': "core_size", 'showcase_name': "Core Size", 'db_type': "VARCHAR", 'show_as_type': "normal", 'required': False, },
-    {'db_name': "architecture", 'showcase_name': "Architecture", 'db_type': "VARCHAR", 'show_as_type': "normal", 'required': False, },
-    {'db_name': "max_clock", 'showcase_name': "Maximum Clock Speed", 'db_type': "INT", 'show_as_type': "engineering", 'required': False, },
-    {'db_name': "max_voltage", 'showcase_name': "Maximum Voltage", 'db_type': "FLOAT", 'show_as_type': "normal", 'required': False, },
-    {'db_name': "min_voltage", 'showcase_name': "Minimum Voltage", 'db_type': "FLOAT", 'show_as_type': "normal", 'required': False, },
-    {'db_name': "flash_size", 'showcase_name': "Flash Size", 'db_type': "INT", 'show_as_type': "engineering", 'required': False, },
-    {'db_name': "ram_size", 'showcase_name': "RAM Size", 'db_type': "INT", 'show_as_type': "engineering", 'required': False, },
-    {'db_name': "eeprom_size", 'showcase_name': "EEPROM Size", 'db_type': "INT", 'show_as_type': "engineering", 'required': False, },
+    {'db_name': "core_size", 'showcase_name': "Core Size", 'db_type': "VARCHAR", 'shows_as': "normal", 'required': False, },
+    {'db_name': "architecture", 'showcase_name': "Architecture", 'db_type': "VARCHAR", 'shows_as': "normal", 'required': False, },
+    {'db_name': "max_clock", 'showcase_name': "Maximum Clock Speed", 'db_type': "INT", 'shows_as': "engineering", 'required': False, },
+    {'db_name': "max_voltage", 'showcase_name': "Maximum Voltage", 'db_type': "FLOAT", 'shows_as': "normal", 'required': False, },
+    {'db_name': "min_voltage", 'showcase_name': "Minimum Voltage", 'db_type': "FLOAT", 'shows_as': "normal", 'required': False, },
+    {'db_name': "flash_size", 'showcase_name': "Flash Size", 'db_type': "INT", 'shows_as': "engineering", 'required': False, },
+    {'db_name': "ram_size", 'showcase_name': "RAM Size", 'db_type': "INT", 'shows_as': "engineering", 'required': False, },
+    {'db_name': "eeprom_size", 'showcase_name': "EEPROM Size", 'db_type': "INT", 'shows_as': "engineering", 'required': False, },
 ]
 
 

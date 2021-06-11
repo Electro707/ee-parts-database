@@ -33,6 +33,7 @@ class EEData:
             self.cur = cursor
             self.table_name = None      # type: str
             self.table_item_spec = None     # type: list
+            self.table_item_display_order = None        # type: list
             self.part_type = GenericItem
             self.log = logging.getLogger(self.table_name)
 
@@ -68,7 +69,6 @@ class EEData:
             if mfr_part_numb is not None:
                 self.cur.execute(" SELECT id FROM "+self.table_name+" WHERE mfr_part_numb=? ", (mfr_part_numb, ))
                 d = self.cur.fetchall()
-                print(d)
                 if len(d) == 0:
                     return None
                 elif len(d) == 1:
@@ -115,6 +115,14 @@ class EEData:
                 sql_command = sql_command[:-1] + "WHERE mfr_part_numb=?"
                 sql_params.append(part_info.mfr_part_numb)
                 self.cur.execute(sql_command, sql_params)
+
+        def delete_part_by_mfr_number(self, mfr_part_numb: str):
+            to_del_id = self.check_if_already_in_db_by_manuf(mfr_part_numb)
+            if to_del_id is None:
+                raise EmptyInDatabase()
+            self.log.debug("Deleting part %s with ID %s" % (mfr_part_numb, to_del_id))
+            sql_command = "DELETE FROM " + self.table_name + " WHERE id=?"
+            self.cur.execute(sql_command, [to_del_id, ])
 
         def create_part(self, part_info: GenericItem):
             """
@@ -168,10 +176,16 @@ class EEData:
             for db_part in d:
                 part = self.part_type()
                 for i, item in enumerate(self.table_item_spec):
-                    # TODO: Update so this command isn't table column position specific.
                     part[item['db_name']] = db_part[i]
                 ret.append(part)
             return ret
+
+        def is_database_empty(self):
+            self.cur.execute(" SELECT id FROM " + self.table_name)
+            d = self.cur.fetchall()
+            if len(d) == 0:
+                return True
+            return False
 
         def drop_table(self):
             self.log.warning("DROPPING TABLE FOR THIS PART...DON'T REGRET THIS LATER!")
@@ -184,6 +198,7 @@ class EEData:
             super().__init__(cursor)
             self.table_name = 'resistance'
             self.table_item_spec = eedata_resistors_spec
+            self.table_item_display_order = eedata_resistor_display_order
             self.part_type = Resistor
             self.check_if_table()
 
