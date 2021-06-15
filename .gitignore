@@ -4,5 +4,6 @@ tests/
 # PyCharm stuff
 .idea
 __pycache__
-# Delete and database file created
+# Delete and database and config files created
 *.db
+*.json

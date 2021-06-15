@@ -210,16 +210,26 @@ class EEData:
             self.part_type = Capacitor
             self.check_if_table()
 
+    class Microcontroller(GenericPart):
+        def __init__(self, cursor: sqlite3.Cursor):
+            super().__init__(cursor)
+            self.table_name = 'microcontroller'
+            self.table_item_spec = eedata_microcontroller_spec
+            self.part_type = Microcontroller
+            self.check_if_table()
+
     def __init__(self):
         self.log = logging.getLogger('Database')
         self.conn = sqlite3.connect('project_db.db')
 
         self.resistors = self.Resistance(self.conn.cursor(factory=self._CustomCursor))
         self.capacitors = self.Capacitors(self.conn.cursor(factory=self._CustomCursor))
+        self.microcontroller = self.Microcontroller(self.conn.cursor(factory=self._CustomCursor))
 
         self.components = {
             'resistor': self.resistors,
             'capacitors': self.capacitors,
+            'microcontroller': self.microcontroller
         }
 
     def close(self):

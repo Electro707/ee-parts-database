@@ -1,5 +1,5 @@
-# E7EPD Rev 0.1 Database Specification
-## A Work-In-Progress document
+# E7EPD Rev 0.05 Database Specification
+## A Work-In-Progress specification
 
 ## Components 
 All components will be based of the `GenericPart` table spec that contains common columns. 
@@ -24,18 +24,18 @@ specific component type (like resistors, ADC, etc) will have its own SQL table.
 |Name|SQL Type|Description|
 |---|---|---|
 |resistance|FLOAT NOT NULL| The resistor's resistance|
-|tolerance|FLOAT| The resistor's tolerance as a float (so a 5% resistor will be stored as 5|
+|tolerance|FLOAT| The resistor's tolerance as a float (so a 5% resistor will be stored as 5)|
 |power|FLOAT| The resistor's power rating in W|
 
 #### Capacitor Table:
 |Name|SQL Type|Description|
 |---|---|---|
 |capacitance|FLOAT NOT NULL| The capacitor's capacitance|
-|tolerance|FLOAT| The capacitor's tolerance as a float (so a 5% resistor will be stored as 5|
+|tolerance|FLOAT| The capacitor's tolerance as a float (so a 5% capacitor will be stored as 5)|
 |power|FLOAT| The capacitor's power rating in W|
 |voltage|FLOAT| The capacitor's maximum voltage rating|
-|temp_coeff|VARCHAR(20)| The capacitor's temperature coefficient|
-|type|VARCHAR(20)| The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)|
+|temp_coeff|VARCHAR| The capacitor's temperature coefficient|
+|type|VARCHAR| The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)|
 
 #### Microcontroller Table:
 |Name|SQL Type|Description|
@@ -50,4 +50,4 @@ specific component type (like resistors, ADC, etc) will have its own SQL table.
 |eeprom_size|INT| The EEPROM size if applicable|
 
 ## Projects:
-TODO
+TODO, in Rev 0.2

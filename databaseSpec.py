@@ -23,9 +23,11 @@ eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'capacitance', 'showcase_name': "Capacitance", 'db_type': "FLOAT NOT NULL", 'shows_as': "engineering", 'required': True, },
     {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
     {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, },
-    {'db_name': 'voltage', "showcase_name": "Voltage Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, },
-    {'db_name': 'temp_coeff', "showcase_name": "Temperature Coefficient", 'db_type': "VARCHAR(20)", 'shows_as': 'normal', 'required': False, },
+    {'db_name': 'max_voltage', "showcase_name": "Voltage Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, },
+    {'db_name': 'temp_coeff', "showcase_name": "Temperature Coefficient", 'db_type': "VARCHAR", 'shows_as': 'normal', 'required': False, },
+    {'db_name': 'cap_type', "showcase_name": "Capacitor Type", 'db_type': "VARCHAR", 'shows_as': 'normal', 'required': False, },
 ]
+eedata_capacitor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'capacitance', 'tolerance', 'power', 'max_voltage', 'cap_type', 'temp_coeff', 'package', 'comments']
 
 eedata_microcontroller_spec = eedata_generic_spec + [
     {'db_name': "core_size", 'showcase_name': "Core Size", 'db_type': "VARCHAR", 'shows_as': "normal", 'required': False, },
@@ -37,6 +39,7 @@ eedata_microcontroller_spec = eedata_generic_spec + [
     {'db_name': "ram_size", 'showcase_name': "RAM Size", 'db_type': "INT", 'shows_as': "engineering", 'required': False, },
     {'db_name': "eeprom_size", 'showcase_name': "EEPROM Size", 'db_type': "INT", 'shows_as': "engineering", 'required': False, },
 ]
+eedata_microcontroller_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'core_size', 'architecture', 'max_clock', 'flash_size', 'ram_size', 'eeprom_size', 'min_voltage', 'max_voltage', 'package', 'comments']
 
 
 @dataclass
