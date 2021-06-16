@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 import typing
 
-from databaseSpec import *
+from e707pd_spec import *
 
 
 class InputException(Exception):
@@ -18,7 +18,7 @@ class EmptyInDatabase(Exception):
         super().__init__('Empty Part')
 
 
-class EEData:
+class E7EPD:
     class _CustomCursor(sqlite3.Cursor):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -144,15 +144,19 @@ class EEData:
 
         def _insert_part_in_db(self, part_info: GenericItem):
             # Run an insert command into the database
+            sql_params = []
             sql_command = "INSERT INTO " + self.table_name + " ("
             for i, item in enumerate(self.table_item_spec):
                 sql_command += item['db_name'] + ", "
             # Remove last comma and space
             sql_command = sql_command[:-2] + ") VALUES ("
             for i, item in enumerate(self.table_item_spec):
-                sql_command += "'" + str(part_info[item['db_name']]) + "', "
+                # if part_info[item['db_name']] is None:
+                #     part_info[item['db_name']] = 'NULL'
+                sql_command += "?, "
+                sql_params.append(part_info[item['db_name']])
             sql_command = sql_command[:-2] + ");"
-            self.cur.execute(sql_command)
+            self.cur.execute(sql_command, sql_params)
 
         def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int):
             p_id = self.check_if_already_in_db_by_manuf(mfr_part_numb)
@@ -207,29 +211,31 @@ class EEData:
             super().__init__(cursor)
             self.table_name = 'capacitor'
             self.table_item_spec = eedata_capacitor_spec
+            self.table_item_display_order = eedata_capacitor_display_order
             self.part_type = Capacitor
             self.check_if_table()
 
-    class Microcontroller(GenericPart):
+    class ICs(GenericPart):
         def __init__(self, cursor: sqlite3.Cursor):
             super().__init__(cursor)
-            self.table_name = 'microcontroller'
-            self.table_item_spec = eedata_microcontroller_spec
-            self.part_type = Microcontroller
+            self.table_name = 'ic'
+            self.table_item_spec = eedata_ic_spec
+            self.table_item_display_order = eedata_ic_display_order
+            self.part_type = IC
             self.check_if_table()
 
     def __init__(self):
         self.log = logging.getLogger('Database')
-        self.conn = sqlite3.connect('project_db.db')
+        self.conn = sqlite3.connect('e7epd_sql3.db')
 
         self.resistors = self.Resistance(self.conn.cursor(factory=self._CustomCursor))
         self.capacitors = self.Capacitors(self.conn.cursor(factory=self._CustomCursor))
-        self.microcontroller = self.Microcontroller(self.conn.cursor(factory=self._CustomCursor))
+        self.ics = self.ICs(self.conn.cursor(factory=self._CustomCursor))
 
         self.components = {
-            'resistor': self.resistors,
-            'capacitors': self.capacitors,
-            'microcontroller': self.microcontroller
+            'Resistors': self.resistors,
+            'Capacitors': self.capacitors,
+            'ICs': self.ics
         }
 
     def close(self):

@@ -11,12 +11,15 @@ there, I wasn't satisfied with them.
   will use is Python.
 - Modularity: The core application will be made in such a way as to allow ease of adding new parameters for example.
   Mostly will be accomplished with configuration lists
-- Parameterization: This application will allow for parts to contain plenty of parameters (from a resistor's power 
-  dissipation to an ADCs sampling rate) to allow for easy sorting
+- ~~Parameterization: This application will allow for parts to contain plenty of parameters (from a resistor's power 
+  dissipation to an ADCs sampling rate) to allow for easy sorting~~
+  - Kind of. After more thought on the purpose of this project, the only components that really need parametrization are
+  things like resistors, capacitors, etc. Things where the specific part number doesn't matter for a project. In contrast
+    to a microcontroller, a project can't really say: I don't care which micro as long as it's 8-bits.
 - ~~Generic Parts: This database application will allow for the addition, interaction, and project management with
   parts that don't have a specific manufacturer, as well as allowing for projects to add generic components to their
   BOM.~~
-  - After some tought, it's best to keep the generic parts only for projects (where for a project we can have something like "I want a 4.7k resistor in a 0805 package, don't care about anything else)
+  - After some thought, it's best to keep the generic parts only for projects (where for a project we can have something like "I want a 4.7k resistor in a 0805 package, don't care about anything else)
 - Interoperability: This database specification will use a common database (MySQL/SQLite), and be documented so that
   migration from and away from this specific program shall be possible.
   
@@ -28,10 +31,10 @@ This is meant to be used as a personal database, so security is not really that 
 ## Database specification
 For more details as to how parts are stored in the database, see [DATABASE_SPEC.md](DATABASE_SPEC.md)
 
-The python file `database.py` includes a `EEData` class, which is a wrapper around the database. 
+The python file `e7epd.py` includes a `E7EPD` class, which is a wrapper around the database. 
 An official documentation for this class is coming soon, alright the functions should be documented enough to figure them out.
 
-To run the `database.py`, you will need Python>3.7 with their pre-installed packages.
+To run the `e7epd.py`, you will need Python>3.7 with their pre-installed packages.
 
 ## CLI Application
 To start using this application/database, simply launch `cli.py`. Prompts should show up, allowing you to do the following basic tasks per component type:
@@ -47,8 +50,8 @@ The following packages are required to run it:
 
 ## TODO: Database specification
 ### Rev 0.1 TODO:
-- [ ] Expand the database spec to include more components like inductors, battery ICs, etc.
-- [ ] Create examples of how to interact with the `EEData` class.
+- [ ] ~~Expand the database spec to include more components like inductors, battery ICs, etc.~~
+- [ ] Create examples of how to interact with the `E7EPD` class.
 - [ ] Add method of handling database migration.
 
 ### Rev 0.2 and future TODO:
@@ -56,6 +59,6 @@ The following packages are required to run it:
 
 ## TODO: CLI Application
 - [ ] Allow for more user tasks, like only showing filtered parts.
-- [ ] Allow for fractional input (like 1/4 for things like power rating)
+- [x] Allow for fractional input (like 1/4 for things like power rating)
 - [ ] Using the `digikey-api` python package or other electronics distributor's API, allow for automatic part lookup
   thru the manufacturer part number and import characteristics for said part.

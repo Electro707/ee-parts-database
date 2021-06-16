@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import database
+import e7epd
 import logging
 import rich
 import rich.console
@@ -37,7 +37,7 @@ class CLIConfig:
 
 class CLI:
     def __init__(self):
-        self.db = database.EEData()
+        self.db = e7epd.E7EPD()
         self.conf = CLIConfig()
 
     @staticmethod
@@ -52,7 +52,7 @@ class CLI:
             if spec['db_name'] == db_name:
                 return spec
 
-    def print_parts_list(self, part_db: database.EEData.GenericPart, parts_list: list[database.GenericItem], title):
+    def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
         ta = rich.table.Table(title=title)
         for spec_db_name in part_db.table_item_display_order:
@@ -72,14 +72,19 @@ class CLI:
             ta.add_row(*row)
         console.print(ta)
 
-    def print_all_parts(self, part_db: database.EEData.GenericPart):
+    def print_all_parts(self, part_db: e7epd.E7EPD.GenericPart):
         parts_list = part_db.get_all_parts()
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
     @staticmethod
-    def ask_for_spec_input(spec: dict) -> str:
+    def ask_for_spec_input(spec: dict, choices: list = None) -> str:
         while 1:
-            inp = console.input("Enter value for %s: " % spec['showcase_name'])
+            if choices:
+                inp = questionary.autocomplete("Enter value for %s: " % spec['showcase_name'], choices=choices).ask()
+            else:
+                inp = questionary.text("Enter value for %s: " % spec['showcase_name']).ask()
+            if inp is None:
+                raise KeyboardInterrupt()
             if inp == '':
                 if spec['required'] is True:
                     console.print("You must enter this spec as it's required")
@@ -88,20 +93,24 @@ class CLI:
                     inp = None
             break
 
-        if spec['shows_as'] == 'engineering':
-            inp = EngNumber(inp)
-        elif spec['shows_as'] == 'percentage':
-            if '%' in inp:
-                inp = inp.replace('%', '')
+        if inp is not None:
+            if spec['shows_as'] == 'engineering':
+                inp = EngNumber(inp)
+            elif spec['shows_as'] == 'percentage':
+                if '%' in inp:
+                    inp = inp.replace('%', '')
+            elif '/' in inp:
+                inp = inp.split('/')
+                inp = float(inp[0]) / float(inp[1])
 
-        if "INT" in spec['db_type']:
-            inp = int(inp)
-        elif "FLOAT" in spec['db_type']:
-            inp = float(inp)
+            if "INT" in spec['db_type']:
+                inp = int(inp)
+            elif "FLOAT" in spec['db_type']:
+                inp = float(inp)
 
         return inp
 
-    def print_filtered_parts(self, part_db: database.EEData.GenericPart):
+    def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
         choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
         specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
         # TODO: Remove TODO once this is done
@@ -110,26 +119,44 @@ class CLI:
         for spec in specs_selected:
             inp = self.ask_for_spec_input(spec)
 
-    def add_part(self, part_db: database.EEData.GenericPart):
+    def add_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ Function gets called when a part is to be added """
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             manufacturer = console.input("Enter the manufacturer part number: ")
+            if manufacturer == '':
+                console.print("[red]Must have a manufacturer part number. If you let's say bought the parts of Aliexpress, just type in something like Aliexpress_SellerA[/]")
+                return
+            manufacturer = manufacturer.upper()
             if part_db.check_if_already_in_db_by_manuf(manufacturer) is not None:
                 console.print("[red]Part is already in the database[/]")
                 return
             new_part = part_db.part_type(mfr_part_numb=manufacturer)
             for spec_db_name in part_db.table_item_display_order:
+                # Skip over the manufacturer part number as we already have that
                 if spec_db_name == 'mfr_part_numb':
                     continue
+                # Select an autocomplete choice, or None if there isn't any
+                autocomplete_choices = None
+                if spec_db_name == 'manufacturer' and part_db.table_name == 'ic':
+                    autocomplete_choices = e7epd.autofill_helpers_list['ic_manufacturers']
+                elif spec_db_name == 'ic_type' and part_db.table_name == 'ic':
+                    autocomplete_choices = e7epd.autofill_helpers_list['ic_types']
+                # Get the spec
                 spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
-                new_part[spec_db_name] = self.ask_for_spec_input(spec)
+                # Ask the suer for that property
+                try:
+                    new_part[spec_db_name] = self.ask_for_spec_input(spec, autocomplete_choices)
+                except KeyboardInterrupt:
+                    console.print("Did not add part")
+                    return
             part_db.create_part(new_part)
+            self.db.save()
         except KeyboardInterrupt:
             console.print("\nOk, no part is added")
             return
 
-    def delete_part(self, part_db: database.EEData.GenericPart):
+    def delete_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ This gets called when a part is to be deleted """
         try:
             manufacturer = console.input("Enter the manufacturer part number: ")
@@ -140,10 +167,10 @@ class CLI:
             return
         try:
             part_db.delete_part_by_mfr_number(manufacturer)
-        except database.EmptyInDatabase:
+        except e7epd.EmptyInDatabase:
             console.print("[red]The manufacturer is not in the database[/]")
 
-    def component_cli(self, part_db: database.EEData.GenericPart):
+    def component_cli(self, part_db: e7epd.E7EPD.GenericPart):
         """ The CLI handler for components """
         while 1:
             to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Add Part", "Delete Part", "Nothing"]).ask()
