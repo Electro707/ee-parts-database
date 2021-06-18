@@ -7,3 +7,5 @@ __pycache__
 # Delete and database and config files created
 *.db
 *.json
+# Sphinx Build files
+_build

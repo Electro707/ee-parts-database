@@ -7,6 +7,8 @@ import typing
 
 from e707pd_spec import *
 
+__version__ = '0.1pre'
+
 
 class InputException(Exception):
     def __init__(self, message):
@@ -29,6 +31,9 @@ class E7EPD:
             return super().execute(sql, parameters)
 
     class GenericPart:
+        """
+            This is a generic part constructor, which other components (like Resistors) will base off of
+        """
         def __init__(self, cursor: sqlite3.Cursor):
             self.cur = cursor
             self.table_name = None      # type: str
@@ -40,7 +45,6 @@ class E7EPD:
         def check_if_table(self):
             """
                 Function that checks if the proper table is setup, and creates one if there isn't
-                :return:
             """
             self.cur.execute(" SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name, ))
             d = self.cur.fetchall()
@@ -55,7 +59,15 @@ class E7EPD:
                 self.cur.execute(sql_command)
 
         def check_if_already_in_db(self, part_info: GenericItem):
-            # TODO: Add check if the manufacturer is empty
+            """
+                Checks if a given part is already in the database
+
+                Currently it's done through checking for a match with the manufacturer part number
+
+                :param part_info: A part item class
+
+                :TODO: Add check if the manufacturer is empty
+            """
             return self.check_if_already_in_db_by_manuf(part_info.mfr_part_numb)
 
         def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
@@ -63,8 +75,14 @@ class E7EPD:
                 Function that checks if a part is already in the database. A generic part just goes by manufacturer
                 part number, otherwise a component-specific callback needs to be added (to look up generic parts for
                 example without a manufacturer part number)
-                :param mfr_part_numb: The part info class
-                :return:
+
+                :param mfr_part_numb: The manufacturer part number to look for.
+
+                :return: None if the part doesn't exist in the database, The SQL ID if it does
+
+                :raises UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the latter, please create a PR with the traceback
+
+                :raises InputException: If the manufacturer part number is None, this will get raised
             """
             if mfr_part_numb is not None:
                 self.cur.execute(" SELECT id FROM "+self.table_name+" WHERE mfr_part_numb=? ", (mfr_part_numb, ))
@@ -76,13 +94,17 @@ class E7EPD:
                 else:
                     raise UserWarning("There is more than 1 entry for a manufacturer part number")
             else:
-                raise UserWarning("Empty manufacturer Part Number")
+                raise InputException("Did not give a manufacturer part number")
 
-        def get_part_by_id(self, sql_id: int):
+        def get_part_by_id(self, sql_id: int) -> GenericItem:
             """
                 Function that returns parts parameters by part ID
+
                 :param sql_id: Part ID in the SQL table
-                :return:
+
+                :return: The part's item class
+
+                :raises EmptyInDatabase: If the SQL ID does not exist in the database
             """
             sql_command = "SELECT "
             for i, item in enumerate(self.table_item_spec):
@@ -102,8 +124,8 @@ class E7EPD:
         def update_part(self, part_info: GenericItem):
             """
                 Update a part based on manufacturer part number
-                :param part_info:
-                :return:
+
+                :param part_info: The part item class you want to update
             """
             if part_info.mfr_part_numb is not None:
                 sql_command = "UPDATE " + self.table_name + " SET "
@@ -127,7 +149,9 @@ class E7EPD:
         def create_part(self, part_info: GenericItem):
             """
                 Function to create a part for the given info
+
                 :param part_info:
+
                 :return:
             """
             # Check if key already exists in table
@@ -224,13 +248,13 @@ class E7EPD:
             self.part_type = IC
             self.check_if_table()
 
-    def __init__(self):
+    def __init__(self, db_conn):
         self.log = logging.getLogger('Database')
-        self.conn = sqlite3.connect('e7epd_sql3.db')
+        self.conn = db_conn
 
-        self.resistors = self.Resistance(self.conn.cursor(factory=self._CustomCursor))
-        self.capacitors = self.Capacitors(self.conn.cursor(factory=self._CustomCursor))
-        self.ics = self.ICs(self.conn.cursor(factory=self._CustomCursor))
+        self.resistors = self.Resistance(self.conn.cursor())
+        self.capacitors = self.Capacitors(self.conn.cursor())
+        self.ics = self.ICs(self.conn.cursor())
 
         self.components = {
             'Resistors': self.resistors,
@@ -239,8 +263,16 @@ class E7EPD:
         }
 
     def close(self):
+        """
+            Commits to the database and closes the database connection
+
+            Call this when exiting your program
+        """
         self.conn.commit()
         self.conn.close()
 
     def save(self):
+        """
+            Saves any changes done to the database
+        """
         self.conn.commit()

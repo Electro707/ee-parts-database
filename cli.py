@@ -13,6 +13,8 @@ import questionary
 import pathlib
 import os
 import json
+import sqlite3
+import mysql.connector
 
 l = logging.getLogger()
 l.setLevel(logging.WARNING)
@@ -22,7 +24,10 @@ console = rich.console.Console(style="blue")
 
 
 class CLIConfig:
-    """ Configuration wrapper for potential future use """
+    class NoDatabaseException(Exception):
+        def __init__(self):
+            super().__init__("No Database")
+
     def __init__(self):
         self.file_path = os.path.dirname(os.path.abspath(__file__)) + '/cli_config.json'
         self.config = {}
@@ -34,11 +39,43 @@ class CLIConfig:
         with open(self.file_path, 'w') as f:
             json.dump(self.config, f)
 
+    def get_database_connection(self):
+        if 'db' not in self.config:
+            raise self.NoDatabaseException()
+        if len(self.config['db']) == 0:
+            raise self.NoDatabaseException()
+        if self.config['db']['type'] == 'local':
+            return sqlite3.connect(self.config['db']['filename'])
+        elif self.config['db']['type'] == 'mysql_server':
+            return mysql.connector.connect(host=self.config['db']['db_host'],
+                                           user=self.config['db']['username'],
+                                           password=self.config['db']['password'],
+                                           database=self.config['db']['db_name'], port=3306)
+
+    def save_database_as_local(self, file_name):
+        if 'db' not in self.config:
+            self.config['db'] = {}
+        if '.db' not in file_name:
+            raise UserWarning("No .db externsion in filename")
+        self.config['db']['type'] = 'local'
+        self.config['db']['filename'] = file_name
+        self.save()
+
+    def save_database_as_mysql(self, username: str, password: str, db_name: str, host: str):
+        if 'db' not in self.config:
+            self.config['db'] = {}
+        self.config['db']['type'] = 'mysql_server'
+        self.config['db']['username'] = username
+        self.config['db']['password'] = password
+        self.config['db']['db_name'] = db_name
+        self.config['db']['db_host'] = host
+        self.save()
+
 
 class CLI:
-    def __init__(self):
-        self.db = e7epd.E7EPD()
-        self.conf = CLIConfig()
+    def __init__(self, config: CLIConfig, database_connection):
+        self.db = e7epd.E7EPD(database_connection)
+        self.conf = config
 
     @staticmethod
     def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
@@ -213,6 +250,35 @@ class CLI:
             self.conf.save()
 
 
+def ask_for_database(config: CLIConfig):
+    console.print("Oh no, no database is configured. Let's get that settled")
+    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['Server', 'Local']).ask()
+    # if is_server == 'Server':
+    #     host = questionary.text("What is the database host?").ask()
+    #     db_name = questionary.text("What is the database name").ask()
+    #     username = questionary.text("What is the database username?").ask()
+    #     password = questionary.password("What is the database password?").ask()
+    #     config.save_database_as_mysql(username=username, db_name=db_name, password=password, host=host)
+    # else:
+    #     file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
+    #     config.save_database_as_local(file_name)
+    if is_server == 'Server':
+        console.print("Sorry, but a MySQL server won't be supported until Database Rev0.2")
+        console.print("In the meanwhile, you need to use a local SQLite database")
+    file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
+    if '.db' not in file_name:
+        file_name += '.db'
+    config.save_database_as_local(file_name)
+
+
 if __name__ == "__main__":
-    c = CLI()
+    c = CLIConfig()
+    while 1:
+        try:
+            db_conn = c.get_database_connection()
+            break
+        except c.NoDatabaseException:
+            ask_for_database(c)
+
+    c = CLI(config=c, database_connection=db_conn)
     c.main()
