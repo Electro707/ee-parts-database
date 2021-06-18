@@ -190,7 +190,7 @@ class E7EPD:
             sql_params = [append_by, p_id]
             self.cur.execute(sql_command, sql_params)
 
-        def get_all_parts(self) -> list[GenericItem]:
+        def get_all_parts(self) -> typing.List[GenericItem]:
             sql_command = "SELECT "
             for i, item in enumerate(self.table_item_spec):
                 sql_command += item['db_name'] + ", "
