@@ -16,5 +16,6 @@ Table of Contents:
 
    cli
    api_reference
+   database_spec
    changelog
 

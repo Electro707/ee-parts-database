@@ -1,4 +1,4 @@
-CLI Application
+Database CLI Application
 ==========================================
 
 While the database can be operated by any external program, a CLI utility exist for interfacing with the database.

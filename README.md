@@ -28,9 +28,9 @@ The documentation for this project can be found in [the project's readthedocs](h
 The documentation is still a work-in-progress
 
 ## Database specification and Interface
-For more details as to how parts are stored in the database, see [DATABASE_SPEC.md](DATABASE_SPEC.md)
+For more details as to how parts are stored in the database, see [database specification](https://e7epd.readthedocs.io/en/latest/database_spec.html)
 
-The python file `e7epd.py` includes a `E7EPD` class, which is a wrapper around the database.
+The python file `e7epd.py` includes a `E7EPD` class, which is a wrapper for the database.
 To run the `e7epd.py`, you will need Python>3.7 with their pre-installed packages.
 
 ## CLI Application
@@ -45,7 +45,11 @@ The following packages are required to run it:
 - [engineering_notation](https://pypi.org/project/engineering-notation/)
 - [questionary](https://pypi.org/project/questionary/)
 
-## TODO: Database specification
+## TODO: Database Specification
+### Rev 0.1 TODO:
+- [ ] Add PCB Specification
+
+## TODO: Database Python Wrapper
 ### Rev 0.1 TODO:
 - [ ] Create examples of how to interact with the `E7EPD` class.
 - [ ] Add method of handling database migration.
