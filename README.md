@@ -45,21 +45,5 @@ The following packages are required to run it:
 - [engineering_notation](https://pypi.org/project/engineering-notation/)
 - [questionary](https://pypi.org/project/questionary/)
 
-## TODO: Database Specification
-### Rev 0.1 TODO:
-- [ ] Add PCB Specification
-
-## TODO: Database Python Wrapper
-### Rev 0.1 TODO:
-- [ ] Create examples of how to interact with the `E7EPD` class.
-- [ ] Add method of handling database migration.
-
-### Rev 0.2 and future TODO:
-- [ ] Create a projects specification, including for generic parts.
-- [ ] Allow a mySQL database connection
-
-## TODO: CLI Application
-- [ ] Allow for more user tasks, like only showing filtered parts.
-- [x] Allow for fractional input (like 1/4 for things like power rating)
-- [ ] Using the `digikey-api` python package or other electronics distributor's API, allow for automatic part lookup
-  thru the manufacturer part number and import characteristics for said part.
+## Changelog and In-Progress
+For the changelog and in-progress additions, see [the project's readthedocs](https://e7epd.readthedocs.io/en/latest/) for more details on that.
