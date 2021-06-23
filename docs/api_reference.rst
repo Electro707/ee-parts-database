@@ -3,6 +3,9 @@
 API Reference
 ==========================================
 
+Python Documentation
+++++++++++++++++++++++++
+
 .. autoclass:: E7EPD
   :members:
   :undoc-members:
@@ -12,4 +15,18 @@ API Reference
 
 .. autoexception:: EmptyInDatabase
   :members:
+
+.. autoexception:: NegativeStock
+  :members:
+
+
+Autofill Helpers
+++++++++++++++++++++++++
+
+This wrapper module also comes with some autofill helpers. All are in the dictionary ``autofill_helpers_list``.
+Here are the current autofill helpers available:
+
+* ``ic_manufacturers``: IC manufacturers like TI and Cypress
+* ``ic_types``: The IC type, like Microcontroller and ADC
+* ``capacitor_types``: Capacitor types like Ceramic and Electrolytic
 

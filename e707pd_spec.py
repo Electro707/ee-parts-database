@@ -9,8 +9,8 @@ from dataclasses import dataclass
 """
 eedata_generic_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'db_type': "INT NOT NULL", 'shows_as': "normal", 'required': True, },
+    {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'db_type': "VARCHAR NOT NULL", "shows_as": "normal", 'required': True, },
     {'db_name': 'manufacturer', 'showcase_name': 'Manufacturer', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
-    {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
     {'db_name': 'package', "showcase_name": "Package", "db_type": "VARCHAR(20) NOT NULL", "shows_as": "normal", 'required': True, },
     {'db_name': 'part_comments', "showcase_name": "Part Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
     {'db_name': 'user_comments', "showcase_name": "User Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
@@ -37,6 +37,14 @@ eedata_ic_spec = eedata_generic_spec + [
     {'db_name': 'ic_type', 'showcase_name': "IC Type", 'db_type': "VARCHAR NOT NULL", 'shows_as': 'normal', 'required': True},
 ]
 eedata_ic_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'ic_type', 'part_comments', 'package', 'user_comments']
+
+eedata_pcb_spec = [
+    {'db_name': 'stock', 'showcase_name': 'Stock', 'db_type': "INT NOT NULL", 'shows_as': "normal", 'required': True, },
+    {'db_name': 'rev', 'showcase_name': 'Revision', 'db_type': "VARCHAR", 'shows_as': "normal", 'required': True, },
+    {'db_name': 'sub_rev', 'showcase_name': 'Sub-Revision', 'db_type': "VARCHAR", 'shows_as': "normal", 'required': False, },
+    {'db_name': 'user_comments', "showcase_name": "User Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
+    {'db_name': 'project_name', 'showcase_name': "Project Name", 'db_type': "VARCHAR NOT NULL", 'shows_as': 'normal', 'required': True},
+]
 
 
 @dataclass
@@ -77,6 +85,15 @@ class IC(GenericItem):
     ic_type: str = None
 
 
+@dataclass
+class PCB:
+    stock: int = None
+    rev: str = None
+    sub_rev: str = None
+    user_comments: str = None
+    project_name: str = None
+
+
 """
     While not part of the spec, but these are handly for autofills
 """
@@ -85,6 +102,7 @@ autofill_helpers_list = {
                          "Cypress Semiconductors", "Infineon"],
     'ic_types': ["Microcontroller", "Boost Converter", "Buck Converter", "FPGA", "Battery Charger", "Battery Management",
                  "LED Driver", "Multiplexer"],
+    'capacitor_types': ['electrolytic', 'ceramic', 'tantalum', 'paper', 'film'],
 }
 
 

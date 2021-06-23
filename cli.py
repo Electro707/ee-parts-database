@@ -8,10 +8,12 @@ import rich.panel
 from rich.prompt import Prompt
 from rich.logging import RichHandler
 import rich.table
+import decimal
 from engineering_notation import EngNumber
 import questionary
 import pathlib
 import os
+import typing
 import json
 import sqlite3
 import mysql.connector
@@ -73,6 +75,9 @@ class CLIConfig:
 
 
 class CLI:
+    class _HelperFunctionExitError(Exception):
+        pass
+
     def __init__(self, config: CLIConfig, database_connection):
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
@@ -88,6 +93,27 @@ class CLI:
         for spec in spec_list:
             if spec['db_name'] == db_name:
                 return spec
+
+    def _ask_manufacturer_part_number(self, part_db: e7epd.E7EPD.GenericPart, must_exit: typing.Union[None, bool] = None) -> str:
+        # Get a list of manufacturer part number to use as type hinting
+        if must_exit is True:
+            try:
+                mfr_list = part_db.get_all_mfr_part_numb_in_db()
+            except e7epd.EmptyInDatabase:
+                console.print("[red]No parts found in database[/]")
+                raise self._HelperFunctionExitError()
+            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number: ", choices=mfr_list).ask()
+        else:
+            mfr_part_numb = questionary.text("Enter the manufacturer part number: ").ask()
+        if mfr_part_numb == '' or mfr_part_numb is None:
+            console.print("[red]Must have a manufacturer part number[/]")
+            raise self._HelperFunctionExitError()
+        if must_exit is not None:
+            exist_in_db = part_db.check_if_already_in_db_by_manuf(mfr_part_numb)
+            if (must_exit and exist_in_db is None) or (not must_exit and exist_in_db is not None):
+                console.print("[red]Part must already exist in the database[/]")
+                raise self._HelperFunctionExitError()
+        return mfr_part_numb.upper()
 
     def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
@@ -128,47 +154,54 @@ class CLI:
                     continue
                 else:
                     inp = None
+
+            if inp is not None:
+                if spec['shows_as'] == 'engineering':
+                    try:
+                        inp = EngNumber(inp)
+                    except decimal.InvalidOperation:
+                        console.print("Invalid engineering number")
+                        continue
+                elif spec['shows_as'] == 'percentage':
+                    if '%' in inp:
+                        inp = inp.replace('%', '')
+                elif '/' in inp:
+                    inp = inp.split('/')
+                    inp = float(inp[0]) / float(inp[1])
+
+                if "INT" in spec['db_type']:
+                    inp = int(inp)
+                elif "FLOAT" in spec['db_type']:
+                    inp = float(inp)
             break
-
-        if inp is not None:
-            if spec['shows_as'] == 'engineering':
-                inp = EngNumber(inp)
-            elif spec['shows_as'] == 'percentage':
-                if '%' in inp:
-                    inp = inp.replace('%', '')
-            elif '/' in inp:
-                inp = inp.split('/')
-                inp = float(inp[0]) / float(inp[1])
-
-            if "INT" in spec['db_type']:
-                inp = int(inp)
-            elif "FLOAT" in spec['db_type']:
-                inp = float(inp)
-
         return inp
 
     def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
         choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
         specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
-        # TODO: Remove TODO once this is done
-        console.print("Sorry, this is a WIP feature")
-        return
+        if len(specs_selected) == 0:
+            console.print("[red]Must choose something[/]")
+            return
+        part_filter = part_db.part_type()
         for spec in specs_selected:
             inp = self.ask_for_spec_input(spec)
+            part_filter[spec['db_name']] = inp
+        print(part_filter)
+        try:
+            parts_list = part_db.get_sorted_parts(part_filter)
+        except e7epd.EmptyInDatabase:
+            console.print("[red]No filtered parts in the database[/]")
+            return
+        self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
-    def add_part(self, part_db: e7epd.E7EPD.GenericPart):
+    def add_new_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ Function gets called when a part is to be added """
         try:
-            # Ask for manufacturer part number first, and make sure there are no conflicts
-            manufacturer = console.input("Enter the manufacturer part number: ")
-            if manufacturer == '':
-                console.print("[red]Must have a manufacturer part number. If you let's say bought the parts of Aliexpress, just type in something like Aliexpress_SellerA[/]")
+            try:
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=False)
+            except self._HelperFunctionExitError:
                 return
-            manufacturer = manufacturer.upper()
-            if part_db.check_if_already_in_db_by_manuf(manufacturer) is not None:
-                console.print("[red]Part is already in the database[/]")
-                return
-            new_part = part_db.part_type(mfr_part_numb=manufacturer)
+            new_part = part_db.part_type(mfr_part_numb=mfr_part_numb)
             for spec_db_name in part_db.table_item_display_order:
                 # Skip over the manufacturer part number as we already have that
                 if spec_db_name == 'mfr_part_numb':
@@ -179,6 +212,8 @@ class CLI:
                     autocomplete_choices = e7epd.autofill_helpers_list['ic_manufacturers']
                 elif spec_db_name == 'ic_type' and part_db.table_name == 'ic':
                     autocomplete_choices = e7epd.autofill_helpers_list['ic_types']
+                elif spec_db_name == 'cap_type' and part_db.table_name == 'capacitor':
+                    autocomplete_choices = e7epd.autofill_helpers_list['capacitor_types']
                 # Get the spec
                 spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
                 # Ask the suer for that property
@@ -196,21 +231,65 @@ class CLI:
     def delete_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ This gets called when a part is to be deleted """
         try:
-            manufacturer = console.input("Enter the manufacturer part number: ")
-            if manufacturer == '':
-                raise KeyboardInterrupt()
-        except KeyboardInterrupt:
-            console.print("[green]\nDeleted Nothing[/]")
+            mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=True)
+        except self._HelperFunctionExitError:
             return
         try:
-            part_db.delete_part_by_mfr_number(manufacturer)
+            part_db.delete_part_by_mfr_number(mfr_part_numb)
         except e7epd.EmptyInDatabase:
             console.print("[red]The manufacturer is not in the database[/]")
+
+    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart):
+        try:
+            # Ask for manufacturer part number first, and make sure there are no conflicts
+            try:
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=True)
+            except self._HelperFunctionExitError:
+                return
+            while 1:
+                add_by = questionary.text("Enter how much you want to add this part by: ").ask()
+                try:
+                    add_by = int(add_by)
+                except ValueError:
+                    console.print("Must be an integer")
+                    continue
+                break
+            part_db.append_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, append_by=add_by)
+            console.print('[green]Add to your stock :)[/]')
+        except KeyboardInterrupt:
+            console.print("\nOk, no stock is changed")
+            return
+
+    def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericPart):
+        try:
+            # Ask for manufacturer part number first, and make sure there are no conflicts
+            try:
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=True)
+            except self._HelperFunctionExitError:
+                return
+            while 1:
+                remove_by = questionary.text("Enter how much you want to add this part by: ").ask()
+                try:
+                    remove_by = int(remove_by)
+                except ValueError:
+                    console.print("Must be an integer")
+                    continue
+                break
+            try:
+                part_db.remove_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, remove_by=remove_by)
+            except e7epd.NegativeStock as e_v:
+                console.print("[red]Stock will go to negative[/]")
+                console.print("[red]If you want to make the stock zero, restart this operation and remove {:d} parts instead[/]".format(e_v.amount_to_make_zero))
+            else:
+                console.print('[green]Removed to your stock :)[/]')
+        except KeyboardInterrupt:
+            console.print("\nOk, no stock is changed")
+            return
 
     def component_cli(self, part_db: e7epd.E7EPD.GenericPart):
         """ The CLI handler for components """
         while 1:
-            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Add Part", "Delete Part", "Nothing"]).ask()
+            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Nothing"]).ask()
             if to_do is None:
                 raise KeyboardInterrupt()
             if to_do == "Nothing":
@@ -225,9 +304,13 @@ class CLI:
                 else:
                     self.print_all_parts(part_db)
             elif to_do == "Add Part":
-                self.add_part(part_db)
+                self.add_new_part(part_db)
             elif to_do == "Delete Part":
                 self.delete_part(part_db)
+            elif to_do == "Append Stock":
+                self.add_stock_to_part(part_db)
+            elif to_do == "Remove Stock":
+                self.remove_stock_from_part(part_db)
 
     def main(self):
         console.print(rich.panel.Panel("Welcome to the E707PD", title_align='center'))
@@ -253,6 +336,7 @@ class CLI:
 def ask_for_database(config: CLIConfig):
     console.print("Oh no, no database is configured. Let's get that settled")
     is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['Server', 'Local']).ask()
+    # TODO: Once a server option is added to the backend, then enable this
     # if is_server == 'Server':
     #     host = questionary.text("What is the database host?").ask()
     #     db_name = questionary.text("What is the database name").ask()

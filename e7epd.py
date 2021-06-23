@@ -11,13 +11,28 @@ __version__ = '0.1pre'
 
 
 class InputException(Exception):
+    """ Exception that gets raised on any input error """
     def __init__(self, message):
         super().__init__(message)
 
 
 class EmptyInDatabase(Exception):
+    """ Exception that gets raised when there is no parts in the database """
     def __init__(self):
         super().__init__('Empty Part')
+
+
+class NegativeStock(Exception):
+    """ Exception that gets raised when the removal of stock will result in a negative stock, which is physically
+     impossible (you're always welcome to prove me wrong)
+
+     Attributes:
+        amount_to_make_zero (int): How many parts to make the part's stock zero.
+
+     """
+    def __init__(self, amount_to_make_zero):
+        self.amount_to_make_zero = amount_to_make_zero
+        super().__init__('Stock will go to negative')
 
 
 class E7EPD:
@@ -31,9 +46,7 @@ class E7EPD:
             return super().execute(sql, parameters)
 
     class GenericPart:
-        """
-            This is a generic part constructor, which other components (like Resistors) will base off of
-        """
+        """ This is a generic part constructor, which other components (like Resistors) will base off of """
         def __init__(self, cursor: sqlite3.Cursor):
             self.cur = cursor
             self.table_name = None      # type: str
@@ -43,9 +56,7 @@ class E7EPD:
             self.log = logging.getLogger(self.table_name)
 
         def check_if_table(self):
-            """
-                Function that checks if the proper table is setup, and creates one if there isn't
-            """
+            """ Function that checks if the proper table is setup, and creates one if there isn't """
             self.cur.execute(" SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name, ))
             d = self.cur.fetchall()
             if d[0][0] == 0:
@@ -59,14 +70,14 @@ class E7EPD:
                 self.cur.execute(sql_command)
 
         def check_if_already_in_db(self, part_info: GenericItem):
-            """
-                Checks if a given part is already in the database
-
+            """ Checks if a given part is already in the database
                 Currently it's done through checking for a match with the manufacturer part number
 
-                :param part_info: A part item class
+                Args:
+                    part_info (GenericItem): A part item class
 
-                :TODO: Add check if the manufacturer is empty
+                TODO:
+                    Add check if the manufacturer is empty
             """
             return self.check_if_already_in_db_by_manuf(part_info.mfr_part_numb)
 
@@ -76,13 +87,15 @@ class E7EPD:
                 part number, otherwise a component-specific callback needs to be added (to look up generic parts for
                 example without a manufacturer part number)
 
-                :param mfr_part_numb: The manufacturer part number to look for.
+                Args:
+                    mfr_part_numb (str): The manufacturer part number to look for.
 
-                :return: None if the part doesn't exist in the database, The SQL ID if it does
+                Returns:
+                    None if the part doesn't exist in the database, The SQL ID if it does
 
-                :raises UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the latter, please create a PR with the traceback
-
-                :raises InputException: If the manufacturer part number is None, this will get raised
+                Raises:
+                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the latter, please create a PR with the traceback
+                    InputException: If the manufacturer part number is None, this will get raised
             """
             if mfr_part_numb is not None:
                 self.cur.execute(" SELECT id FROM "+self.table_name+" WHERE mfr_part_numb=? ", (mfr_part_numb, ))
@@ -100,11 +113,14 @@ class E7EPD:
             """
                 Function that returns parts parameters by part ID
 
-                :param sql_id: Part ID in the SQL table
+                Args:
+                    sql_id (int): Part ID in the SQL table
 
-                :return: The part's item class
+                Returns:
+                    The part's item class
 
-                :raises EmptyInDatabase: If the SQL ID does not exist in the database
+                Raises:
+                    EmptyInDatabase: If the SQL ID does not exist in the database
             """
             sql_command = "SELECT "
             for i, item in enumerate(self.table_item_spec):
@@ -121,11 +137,40 @@ class E7EPD:
                     ret[item['db_name']] = d[0][i]
                 return ret
 
+        def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> GenericItem:
+            """
+                Function that returns parts parameters by part ID
+
+                Args:
+                    mfr_part_numb (str): The part's manufacturer part number
+
+                Returns:
+                    The part's item class
+
+                Raises:
+                    EmptyInDatabase: If the SQL ID does not exist in the database
+            """
+            sql_command = "SELECT "
+            for i, item in enumerate(self.table_item_spec):
+                sql_command += item['db_name'] + ", "
+            # Remove last comma
+            sql_command = sql_command[:-2] + " FROM " + self.table_name + " WHERE mfr_part_numb=?"
+            self.cur.execute(sql_command, (mfr_part_numb, ))
+            d = self.cur.fetchall()
+            ret = self.part_type()
+            if len(d) == 0:
+                raise EmptyInDatabase()
+            elif len(d) == 1:
+                for i, item in enumerate(self.table_item_spec):
+                    ret[item['db_name']] = d[0][i]
+                return ret
+
         def update_part(self, part_info: GenericItem):
             """
                 Update a part based on manufacturer part number
 
-                :param part_info: The part item class you want to update
+                Args:
+                     part_info (GenericItem): The part item class you want to update
             """
             if part_info.mfr_part_numb is not None:
                 sql_command = "UPDATE " + self.table_name + " SET "
@@ -139,6 +184,15 @@ class E7EPD:
                 self.cur.execute(sql_command, sql_params)
 
         def delete_part_by_mfr_number(self, mfr_part_numb: str):
+            """
+                Function to delete a part by the manufacturer part number
+
+                Args:
+                    mfr_part_numb: The manufacturer part number of the part to delete
+
+                Raises:
+                     EmptyInDatabase: Raises this exception if there is no part in the database with that manufacturer part number
+            """
             to_del_id = self.check_if_already_in_db_by_manuf(mfr_part_numb)
             if to_del_id is None:
                 raise EmptyInDatabase()
@@ -150,9 +204,8 @@ class E7EPD:
             """
                 Function to create a part for the given info
 
-                :param part_info:
-
-                :return:
+                Args:
+                     part_info (GenericItem): The part item class to add to the database
             """
             # Check if key already exists in table
             for item in self.table_item_spec:
@@ -167,6 +220,7 @@ class E7EPD:
             self._insert_part_in_db(part_info)
 
         def _insert_part_in_db(self, part_info: GenericItem):
+            """ Internal function to insert a part into the database """
             # Run an insert command into the database
             sql_params = []
             sql_command = "INSERT INTO " + self.table_name + " ("
@@ -183,6 +237,15 @@ class E7EPD:
             self.cur.execute(sql_command, sql_params)
 
         def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int):
+            """ Appends stock to a part by the manufacturer part number
+
+            Args:
+                mfr_part_numb (str): The manufacturer number to add the stock to
+                append_by: How much stock to add
+
+            Raises:
+                EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+            """
             p_id = self.check_if_already_in_db_by_manuf(mfr_part_numb)
             if p_id is None:
                 raise EmptyInDatabase()
@@ -190,7 +253,28 @@ class E7EPD:
             sql_params = [append_by, p_id]
             self.cur.execute(sql_command, sql_params)
 
+        def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int):
+            """ Removes stock from a part by the manufacturer part number
+
+            Args:
+                mfr_part_numb (str): The manufacturer number to add the stock to
+                remove_by: How much stock to remove from the part
+
+            Raises:
+                EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+            """
+            part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+            part.stock -= remove_by
+            if part.stock < 0:
+                raise NegativeStock(part.stock+remove_by)
+            self.update_part(part)
+
         def get_all_parts(self) -> typing.List[GenericItem]:
+            """ Get all parts in the database
+
+                Returns:
+                    EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+            """
             sql_command = "SELECT "
             for i, item in enumerate(self.table_item_spec):
                 sql_command += item['db_name'] + ", "
@@ -208,7 +292,53 @@ class E7EPD:
                 ret.append(part)
             return ret
 
+        def get_all_mfr_part_numb_in_db(self) -> list:
+            """ Get all manufaturer part numbers as a list
+
+            Returns:
+                A list of all manufacturer part numbers in the database
+            """
+            to_ret = []
+            self.cur.execute("SELECT mfr_part_numb FROM " + self.table_name + ";")
+            d = self.cur.fetchall()
+            ret = []
+            if len(d) == 0:
+                raise EmptyInDatabase()
+            for m in d:
+                ret.append(m[0])
+            return ret
+
+        def get_sorted_parts(self, part_filter: GenericItem):
+            sql_command = "SELECT "
+            sql_params = []
+            for i, item in enumerate(self.table_item_spec):
+                sql_command += item['db_name'] + ", "
+            # Remove last comma
+            sql_command = sql_command[:-2] + " FROM " + self.table_name + " WHERE "
+            for i, item in enumerate(self.table_item_spec):
+                if part_filter[item['db_name']] is None:
+                    continue
+                sql_command += "{}=?, ".format(item['db_name'])
+                sql_params.append(part_filter[item['db_name']])
+            sql_command = sql_command[:-2] + ';'
+            self.cur.execute(sql_command, sql_params)
+            d = self.cur.fetchall()
+            ret = []
+            if len(d) == 0:
+                raise EmptyInDatabase()
+            for db_part in d:
+                part = self.part_type()
+                for i, item in enumerate(self.table_item_spec):
+                    part[item['db_name']] = db_part[i]
+                ret.append(part)
+            return ret
+
         def is_database_empty(self):
+            """ Checks if the database is empty
+
+            Returns:
+                True if the database is empty, False if not
+            """
             self.cur.execute(" SELECT id FROM " + self.table_name)
             d = self.cur.fetchall()
             if len(d) == 0:
@@ -216,6 +346,7 @@ class E7EPD:
             return False
 
         def drop_table(self):
+            """ Drops the database table and create a new one. Also known as the Nuke option """
             self.log.warning("DROPPING TABLE FOR THIS PART...DON'T REGRET THIS LATER!")
             self.cur.execute("DROP TABLE " + self.table_name)
             # Recreate table
@@ -264,8 +395,7 @@ class E7EPD:
 
     def close(self):
         """
-            Commits to the database and closes the database connection
-
+            Commits to the database and closes the database connection.
             Call this when exiting your program
         """
         self.conn.commit()
