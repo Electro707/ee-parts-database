@@ -19,7 +19,7 @@ Database Python DB Wrapper
 --------------------------------------------
 * v0.05:
     * Initial Release
-* v0.1:
+* v0.2:
     * Updated spec for Database Rev 0.2
     * Changed main class name from ``EEData`` to ``E7EPD``
     * Allowing user-given ``sqlite3`` connections
