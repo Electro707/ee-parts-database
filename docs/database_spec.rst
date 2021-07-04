@@ -1,13 +1,13 @@
 E7EPD Database Specification 
 ================================================
-**Rev 0.1**
+**Rev 0.2**
 
 Specification Notes
 ---------------------------------
 Components 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-All components, unless specified, will be based of the `GenericPart` table spec that contains common columns.
+All components, when specified, will be based of the `GenericPart` table spec that contains common columns.
 Note that the `GenericPart` table doesn't exist by itself but is used in this document as columns that every 
 other table should have
 
@@ -34,6 +34,8 @@ user_comments MEDIUMTEXT                        Any other user comments
 
 Resistor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+
 ============= =================== =======================================================
 Name          SQL Type            Description
 ============= =================== =======================================================
@@ -44,6 +46,8 @@ power         FLOAT               The resistor's power rating in W
 
 Capacitor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+
 ============= =================== =======================================================
 Name          SQL Type            Description
 ============= =================== =======================================================
@@ -55,18 +59,43 @@ temp_coeff    VARCHAR             The capacitor's temperature coefficient
 cap_type      VARCHAR             The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)
 ============= =================== =======================================================
 
+Inductor Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+
+============= =================== =======================================================
+Name          SQL Type            Description
+============= =================== =======================================================
+inductance    FLOAT NOT NULL      The inductance of the inductor
+tolerance     FLOAT               The inductor's tolerance as a float (so a 5% inductor will be stored as 5)
+max_current   FLOAT               The inductor's maximum current
+============= =================== =======================================================
+
+Diode Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+
+=================== =================== =======================================================
+Name                SQL Type            Description
+=================== =================== =======================================================
+diode_type          VARCHAR NOT NULL    Diode Type (Regular, Zener, Schottky, etc)
+max_current         FLOAT               Max/Peak Current
+average_current     FLOAT               Average Current Rating
+max_rv              FLOAT               Max reverse voltage
+=================== =================== =======================================================
+
 IC Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+
 ============= =================== =======================================================
 Name          SQL Type            Description
 ============= =================== =======================================================
 ic_type       VARCHAR NOT NULL    The IC type, for example microcontroller, ADC, comparator, etc.
 ============= =================== =======================================================
 
-PCBs
+PCBs Table
 ---------------------------------
-**NOTE: This table will not be based off the `GenericPart` table**
-
 ============= ===================================== =======================================================
 Name          SQL Type                              Description
 ============= ===================================== =======================================================
@@ -80,5 +109,5 @@ user_comments MEDIUMTEXT                            Any other user comments
 
 Projects
 ---------------------------------
-TODO, in Rev 0.2
+TODO, in Rev 2.0
 

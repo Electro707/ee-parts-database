@@ -21,7 +21,7 @@ eedata_resistors_spec = eedata_generic_spec + [
     {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
     {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, }
 ]
-eedata_resistor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'resistance', 'tolerance', 'power', 'package', 'user_comments']
+eedata_resistor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'resistance', 'tolerance', 'power', 'package', 'part_comments', 'user_comments']
 
 eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'capacitance', 'showcase_name': "Capacitance", 'db_type': "FLOAT NOT NULL", 'shows_as': "engineering", 'required': True, },
@@ -31,12 +31,27 @@ eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'temp_coeff', "showcase_name": "Temperature Coefficient", 'db_type': "VARCHAR", 'shows_as': 'normal', 'required': False, },
     {'db_name': 'cap_type', "showcase_name": "Capacitor Type", 'db_type': "VARCHAR", 'shows_as': 'normal', 'required': False, },
 ]
-eedata_capacitor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'capacitance', 'tolerance', 'power', 'max_voltage', 'cap_type', 'temp_coeff', 'package', 'user_comments']
+eedata_capacitor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'capacitance', 'tolerance', 'power', 'max_voltage', 'cap_type', 'temp_coeff', 'package', 'part_comments', 'user_comments']
 
 eedata_ic_spec = eedata_generic_spec + [
     {'db_name': 'ic_type', 'showcase_name': "IC Type", 'db_type': "VARCHAR NOT NULL", 'shows_as': 'normal', 'required': True},
 ]
 eedata_ic_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'ic_type', 'part_comments', 'package', 'user_comments']
+
+eedata_inductor_spec = eedata_generic_spec + [
+    {'db_name': 'inductance', "showcase_name": "Tolerance", "db_type": "FLOAT NOT NULL", "shows_as": "engineering", 'required': True, },
+    {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
+    {'db_name': 'max_current', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
+]
+eedata_inductor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'inductance', 'tolerance', 'max_current', 'package', 'part_comments', 'user_comments']
+
+eedata_diode_spec = eedata_generic_spec + [
+    {'db_name': 'diode_type', "showcase_name": "Diode Type", "db_type": "VARCHAR NOT NULL", "shows_as": "normal", 'required': True, },
+    {'db_name': 'max_current', "showcase_name": "Peak Current", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
+    {'db_name': 'average_current', "showcase_name": "Average Current", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
+    {'db_name': 'max_rv', "showcase_name": "Max Reverse Voltage", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
+]
+eedata_diode_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'diode_type', 'max_rv', 'average_current', 'max_current', 'package', 'part_comments', 'user_comments']
 
 eedata_pcb_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'db_type': "INT NOT NULL", 'shows_as': "normal", 'required': True, },
@@ -81,6 +96,21 @@ class Capacitor(GenericItem):
 
 
 @dataclass
+class Inductor(GenericItem):
+    inductance: float = None
+    tolerance: float = None
+    max_current: float = None
+
+
+@dataclass
+class Diode(GenericItem):
+    diode_type: str = None
+    max_current: float = None
+    average_current: float = None
+    max_rv: float = None
+
+
+@dataclass
 class IC(GenericItem):
     ic_type: str = None
 
@@ -103,6 +133,7 @@ autofill_helpers_list = {
     'ic_types': ["Microcontroller", "Boost Converter", "Buck Converter", "FPGA", "Battery Charger", "Battery Management",
                  "LED Driver", "Multiplexer"],
     'capacitor_types': ['electrolytic', 'ceramic', 'tantalum', 'paper', 'film'],
+    'diode_type': ['Regular', 'Zener', 'Schottky', 'TSV'],
 }
 
 

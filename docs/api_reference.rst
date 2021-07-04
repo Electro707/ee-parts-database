@@ -29,4 +29,5 @@ Here are the current autofill helpers available:
 * ``ic_manufacturers``: IC manufacturers like TI and Cypress
 * ``ic_types``: The IC type, like Microcontroller and ADC
 * ``capacitor_types``: Capacitor types like Ceramic and Electrolytic
+* ``diode_type``: Diode Types
 

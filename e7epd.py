@@ -7,7 +7,8 @@ import typing
 
 from e707pd_spec import *
 
-__version__ = '0.1pre'
+__version__ = '0.2'
+database_version = '0.2'
 
 
 class InputException(Exception):
@@ -44,6 +45,45 @@ class E7EPD:
         def execute(self, sql: str, parameters: typing.Iterable[typing.Any] = []) -> sqlite3.Cursor:
             self.log.debug('Executing SQL command %s with params %s' % (sql, parameters))
             return super().execute(sql, parameters)
+
+    class ConfigTable:
+        def __init__(self, cursor: sqlite3.Cursor):
+            self.cur = cursor
+            self.table_name = 'e7epd_config'
+            self.log = logging.getLogger('config')
+            self.check_if_table()
+
+        def check_if_table(self):
+            self.cur.execute(" SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name,))
+            d = self.cur.fetchall()
+            if d[0][0] == 0:
+                # Create a table if it doesn't exist
+                sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER PRIMARY KEY AUTOINCREMENT, key VARCHAR NOT NULL, val VARCHAR NOT NULL);"
+                self.cur.execute(sql_command)
+
+        def get_info(self, key: str) -> typing.Union[str, None]:
+            self.cur.execute("SELECT key, val FROM " + self.table_name + " WHERE key=?", [key])
+            d = self.cur.fetchall()
+            if len(d) == 0:
+                return None
+            elif len(d) == 1:
+                return d[0][1]
+            else:
+                raise UserWarning("There isn't supposed to be more than 1 key")
+
+        def store_info(self, key: str, value: str):
+            if self.get_info(key) is None:  # There isn't an entry for this, so create it
+                self.cur.execute("INSERT INTO " + self.table_name + "(key, val) VALUES (?, ?)", [key, value])
+                self.log.debug('Inserted key-value pair: {}={}'.format(key, value))
+            else:
+                self.cur.execute("UPDATE " + self.table_name + " SET val=? WHERE key=?", [value, key])
+                self.log.debug('Updated key {} with value {}'.format(key, value))
+
+        def get_db_version(self) -> typing.Union[str, None]:
+            return self.get_info('db_ver')
+
+        def store_db_version(self):
+            self.store_info('db_ver', database_version)
 
     class GenericPart:
         """ This is a generic part constructor, which other components (like Resistors) will base off of """
@@ -347,10 +387,8 @@ class E7EPD:
 
         def drop_table(self):
             """ Drops the database table and create a new one. Also known as the Nuke option """
-            self.log.warning("DROPPING TABLE FOR THIS PART...DON'T REGRET THIS LATER!")
+            self.log.warning("DROPPING TABLE FOR THIS PART (%s)...DON'T REGRET THIS LATER!" % self.table_name)
             self.cur.execute("DROP TABLE " + self.table_name)
-            # Recreate table
-            self.check_if_table()
 
     class Resistance(GenericPart):
         def __init__(self, cursor: sqlite3.Cursor):
@@ -370,6 +408,15 @@ class E7EPD:
             self.part_type = Capacitor
             self.check_if_table()
 
+    class Inductors(GenericPart):
+        def __init__(self, cursor: sqlite3.Cursor):
+            super().__init__(cursor)
+            self.table_name = 'inductor'
+            self.table_item_spec = eedata_inductor_spec
+            self.table_item_display_order = eedata_inductor_display_order
+            self.part_type = Inductor
+            self.check_if_table()
+
     class ICs(GenericPart):
         def __init__(self, cursor: sqlite3.Cursor):
             super().__init__(cursor)
@@ -379,19 +426,37 @@ class E7EPD:
             self.part_type = IC
             self.check_if_table()
 
+    class Diodes(GenericPart):
+        def __init__(self, cursor: sqlite3.Cursor):
+            super().__init__(cursor)
+            self.table_name = 'diode'
+            self.table_item_spec = eedata_diode_spec
+            self.table_item_display_order = eedata_diode_display_order
+            self.part_type = Diode
+            self.check_if_table()
+
     def __init__(self, db_conn):
         self.log = logging.getLogger('Database')
         self.conn = db_conn
+        self.config = self.ConfigTable(self.conn.cursor())
 
         self.resistors = self.Resistance(self.conn.cursor())
         self.capacitors = self.Capacitors(self.conn.cursor())
+        self.inductors = self.Inductors(self.conn.cursor())
         self.ics = self.ICs(self.conn.cursor())
+        self.diodes = self.Diodes(self.conn.cursor())
 
         self.components = {
             'Resistors': self.resistors,
             'Capacitors': self.capacitors,
-            'ICs': self.ics
+            'Inductors': self.inductors,
+            'ICs': self.ics,
+            'Diodes': self.diodes
         }
+
+        # If the DB version is None (if the config table was just created), then populate the current version
+        if self.config.get_db_version() is None:
+            self.config.store_db_version()
 
     def close(self):
         """
@@ -406,3 +471,30 @@ class E7EPD:
             Saves any changes done to the database
         """
         self.conn.commit()
+
+    def wipe_database(self):
+        """
+            Wipes the component databases
+        """
+        for c in self.components:
+            self.components[c].drop_table()
+            # Recreate table
+            self.components[c].check_if_table()
+
+    def update_database(self):
+        """
+            Updates the database to the most recent revision
+        """
+        # Doing nothing for now as this software revision with DB Spec V0.2 is the first one with this feature
+        pass
+        self.config.store_db_version()
+
+    def is_latest_database(self) -> bool:
+        """
+            Returns whether the database is matched with the latest rev
+            Returns:
+                bool: True if the database is the latest, False if not
+        """
+        if self.config.get_db_version() != database_version:
+            return False
+        return True

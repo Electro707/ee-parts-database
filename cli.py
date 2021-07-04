@@ -75,6 +75,8 @@ class CLIConfig:
 
 
 class CLI:
+    cli_revision = '0.2'
+
     class _HelperFunctionExitError(Exception):
         pass
 
@@ -156,6 +158,8 @@ class CLI:
                     inp = None
 
             if inp is not None:
+                # Remove leading and trailing whitespace
+                inp = inp.strip()
                 if spec['shows_as'] == 'engineering':
                     try:
                         inp = EngNumber(inp)
@@ -214,8 +218,13 @@ class CLI:
                     autocomplete_choices = e7epd.autofill_helpers_list['ic_types']
                 elif spec_db_name == 'cap_type' and part_db.table_name == 'capacitor':
                     autocomplete_choices = e7epd.autofill_helpers_list['capacitor_types']
+                elif spec_db_name == 'diode_type' and part_db.table_name == 'diode':
+                    autocomplete_choices = e7epd.autofill_helpers_list['diode_type']
                 # Get the spec
                 spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
+                if spec is None:
+                    console.print("[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
+                    return
                 # Ask the suer for that property
                 try:
                     new_part[spec_db_name] = self.ask_for_spec_input(spec, autocomplete_choices)
@@ -312,18 +321,50 @@ class CLI:
             elif to_do == "Remove Stock":
                 self.remove_stock_from_part(part_db)
 
+    def choose_component(self):
+        while 1:
+            component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + ['Exit']).ask()
+            if component is None:
+                raise KeyboardInterrupt()
+            elif component == 'Exit':
+                break
+
+            part_db = self.db.components[component]
+            self.component_cli(part_db)
+
+    def wipe_database(self):
+        do_delete = questionary.confirm("ARE YOYU SURE???", auto_enter=False).ask()
+        if do_delete is True:
+            do_delete = questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False).ask()
+            if do_delete is True:
+                self.db.wipe_database()
+                console.print("Don't regret this!!!")
+                return
+        if do_delete is not True:
+            console.print("Did not delete the database")
+            return
+
     def main(self):
-        console.print(rich.panel.Panel("Welcome to the E707PD", title_align='center'))
+        # Check DB version before doing anything
+        if not self.db.is_latest_database():
+            do_update = questionary.confirm("Database is not at the latest version. Updrade?", auto_enter=False).ask()
+            if do_update:
+                self.db.update_database()
+            else:
+                console.print("[red]You chose to not update the database, thus this CLI application is not usable[/]")
+                return
+        console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision), title_align='center'))
         try:
             while 1:
-                component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys())+['Exit']).ask()
-                if component is None:
+                to_do = questionary.select("Select the component you want do things with:", choices=['Components', 'Wipe Database', 'Exit']).ask()
+                if to_do is None:
                     raise KeyboardInterrupt()
-                elif component == 'Exit':
+                elif to_do == 'Exit':
                     break
-                part_db = self.db.components[component]
-
-                self.component_cli(part_db)
+                elif to_do == 'Components':
+                    self.choose_component()
+                elif to_do == 'Wipe Database':
+                    self.wipe_database()
 
         except KeyboardInterrupt:
             pass
