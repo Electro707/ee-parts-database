@@ -1,6 +1,6 @@
 E7EPD Database Specification 
 ================================================
-**Rev 0.2**
+**Rev 0.3PRE**
 
 Specification Notes
 ---------------------------------
@@ -28,6 +28,7 @@ stock         INT NOT NULL                      The number of parts in stock
 mfr_part_numb VARCHAR NOT NULL                  The manufacturer part number, used to distinguish each part from another
 manufacturer  VARCHAR                           The manufacturer of the component
 package       VARCHAR NOT NULL                  The part's physical package
+storage       VARCHAR                           The part's storage location
 part_comments MEDIUMTEXT                        Comments about the part
 user_comments MEDIUMTEXT                        Any other user comments
 ============= ================================= =======================================================

@@ -12,6 +12,7 @@ eedata_generic_spec = [
     {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'db_type': "VARCHAR NOT NULL", "shows_as": "normal", 'required': True, },
     {'db_name': 'manufacturer', 'showcase_name': 'Manufacturer', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
     {'db_name': 'package', "showcase_name": "Package", "db_type": "VARCHAR(20) NOT NULL", "shows_as": "normal", 'required': True, },
+    {'db_name': 'storage', 'showcase_name': 'Storage Location', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
     {'db_name': 'part_comments', "showcase_name": "Part Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
     {'db_name': 'user_comments', "showcase_name": "User Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
 ]
@@ -134,6 +135,10 @@ autofill_helpers_list = {
                  "LED Driver", "Multiplexer"],
     'capacitor_types': ['electrolytic', 'ceramic', 'tantalum', 'paper', 'film'],
     'diode_type': ['Regular', 'Zener', 'Schottky', 'TSV'],
+    'passive_packages': ['0201', '0603', '0805', '1206'],
+    'ic_packages': ['SOT23', 'SOT23-5',
+                    'DIP-4', 'DIP-8', 'DIP-14', 'DIP-16', 'DIP-18', 'DIP-28',
+                    'SOIC-8, SIOC-14, SOIC-16, SOIC-18']
 }
 
 

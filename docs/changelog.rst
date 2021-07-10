@@ -14,6 +14,8 @@ E7EPD Database Specification
 * v0.2:
     * Added Inductor table
     * Added Diode table
+* v0.3 (In Progress):
+    * Added a ``storage`` key to all parts
 
 Database Python DB Wrapper
 --------------------------------------------

@@ -2,13 +2,16 @@ import logging
 import sqlite3
 import json
 import os
+import time
 from dataclasses import dataclass
 import typing
 
 from e707pd_spec import *
 
-__version__ = '0.2'
-database_version = '0.2'
+# Version of this backend
+__version__ = '0.3'
+# Version of the database spec
+database_spec_rev = '0.3'
 
 
 class InputException(Exception):
@@ -83,7 +86,7 @@ class E7EPD:
             return self.get_info('db_ver')
 
         def store_db_version(self):
-            self.store_info('db_ver', database_version)
+            self.store_info('db_ver', database_spec_rev)
 
     class GenericPart:
         """ This is a generic part constructor, which other components (like Resistors) will base off of """
@@ -435,7 +438,7 @@ class E7EPD:
             self.part_type = Diode
             self.check_if_table()
 
-    def __init__(self, db_conn):
+    def __init__(self, db_conn: sqlite3.Connection):
         self.log = logging.getLogger('Database')
         self.conn = db_conn
         self.config = self.ConfigTable(self.conn.cursor())
@@ -485,8 +488,11 @@ class E7EPD:
         """
             Updates the database to the most recent revision
         """
-        # Doing nothing for now as this software revision with DB Spec V0.2 is the first one with this feature
-        pass
+        self.log.info("Backing up database before applying changes")
+        self.backup_db()
+        if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3: Add storage to all parts
+            for c in self.components:
+                self.components[c].cur.execute("ALTER TABLE " + self.components[c].table_name + " ADD storage VARCHAR")
         self.config.store_db_version()
 
     def is_latest_database(self) -> bool:
@@ -495,6 +501,20 @@ class E7EPD:
             Returns:
                 bool: True if the database is the latest, False if not
         """
-        if self.config.get_db_version() != database_version:
+        if self.config.get_db_version() != database_spec_rev:
             return False
         return True
+
+    def backup_db(self):
+        """
+            Backs up the database under a new backup file
+        """
+        new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s' % time.strftime('%y%m%d%H%M%S')
+        self.log.info("Backing database under %s" % new_db_file)
+        # For now do with only SQLite3
+        # TODO: Make the backup function compatible with mySQL once that's implemented
+        backup_conn = sqlite3.connect(new_db_file)
+        with backup_conn:
+            self.conn.backup(backup_conn)
+        self.log.info("Successfully backed-up database")
+        backup_conn.close()
