@@ -1,9 +1,9 @@
 import logging
-import sqlite3
 import json
 import os
 import time
-from dataclasses import dataclass
+import sqlalchemy
+import sqlalchemy.future
 import typing
 
 from e707pd_spec import *
@@ -40,32 +40,38 @@ class NegativeStock(Exception):
 
 
 class E7EPD:
-    class _CustomCursor(sqlite3.Cursor):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.log = logging.getLogger('sql')
-
-        def execute(self, sql: str, parameters: typing.Iterable[typing.Any] = []) -> sqlite3.Cursor:
-            self.log.debug('Executing SQL command %s with params %s' % (sql, parameters))
-            return super().execute(sql, parameters)
+    # class _CustomCursor(sqlite3.Cursor):
+    #     def __init__(self, *args, **kwargs):
+    #         super().__init__(*args, **kwargs)
+    #         self.log = logging.getLogger('sql')
+    #
+    #     def execute(self, sql: str, parameters: typing.Iterable[typing.Any] = []) -> sqlite3.Cursor:
+    #         self.log.debug('Executing SQL command %s with params %s' % (sql, parameters))
+    #         return super().execute(sql, parameters)
 
     class ConfigTable:
-        def __init__(self, cursor: sqlite3.Cursor):
-            self.cur = cursor
+        def __init__(self, conn: sqlalchemy.future.Connection):
+            self.conn = conn
             self.table_name = 'e7epd_config'
             self.log = logging.getLogger('config')
             self.check_if_table()
 
         def check_if_table(self):
-            self.cur.execute(" SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name,))
-            d = self.cur.fetchall()
-            if d[0][0] == 0:
-                # Create a table if it doesn't exist
-                sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER PRIMARY KEY AUTOINCREMENT, key VARCHAR NOT NULL, val VARCHAR NOT NULL);"
-                self.cur.execute(sql_command)
+            if self.cur_type == DBType.sqlite3:
+                self.cur.execute("SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name,))
+                d = self.cur.fetchall()
+                if d[0][0] == 0:
+                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTOINCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
+                    self.cur.execute(sql_command)
+            elif self.cur_type == DBType.mysql:
+                self.cur.execute("SELECT * FROM information_schema.tables WHERE table_name=%s ", (self.table_name,))
+                d = self.cur.fetchall()
+                if len(d) == 0:
+                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
+                    self.cur.execute(sql_command)
 
         def get_info(self, key: str) -> typing.Union[str, None]:
-            self.cur.execute("SELECT key, val FROM " + self.table_name + " WHERE key=?", [key])
+            self.cur.execute("SELECT db_keys, val FROM " + self.table_name + " WHERE db_keys=?", [key])
             d = self.cur.fetchall()
             if len(d) == 0:
                 return None
@@ -76,10 +82,10 @@ class E7EPD:
 
         def store_info(self, key: str, value: str):
             if self.get_info(key) is None:  # There isn't an entry for this, so create it
-                self.cur.execute("INSERT INTO " + self.table_name + "(key, val) VALUES (?, ?)", [key, value])
+                self.cur.execute("INSERT INTO " + self.table_name + "(db_keys, val) VALUES (?, ?)", [key, value])
                 self.log.debug('Inserted key-value pair: {}={}'.format(key, value))
             else:
-                self.cur.execute("UPDATE " + self.table_name + " SET val=? WHERE key=?", [value, key])
+                self.cur.execute("UPDATE " + self.table_name + " SET val=? WHERE db_keys=?", [value, key])
                 self.log.debug('Updated key {} with value {}'.format(key, value))
 
         def get_db_version(self) -> typing.Union[str, None]:
@@ -100,17 +106,18 @@ class E7EPD:
 
         def check_if_table(self):
             """ Function that checks if the proper table is setup, and creates one if there isn't """
-            self.cur.execute(" SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name, ))
-            d = self.cur.fetchall()
-            if d[0][0] == 0:
-                # Create a table if it doesn't exist
-                sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                for i, item in enumerate(self.table_item_spec):
-                    sql_command += item['db_name'] + " " + item['db_type'] + ", "
-                # Remove last comma
-                sql_command = sql_command[:-2] + ");"
-                # sql_command += "PRIMARY KEY('id') );"
-                self.cur.execute(sql_command)
+            if self.cur_type == DBType.sqlite3:
+                self.cur.execute("SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name,))
+                d = self.cur.fetchall()
+                if d[0][0] == 0:
+                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTOINCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
+                    self.cur.execute(sql_command)
+            elif self.cur_type == DBType.mysql:
+                self.cur.execute("SELECT * FROM information_schema.tables WHERE table_name=%s ", (self.table_name,))
+                d = self.cur.fetchall()
+                if len(d) == 0:
+                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
+                    self.cur.execute(sql_command)
 
         def check_if_already_in_db(self, part_info: GenericItem):
             """ Checks if a given part is already in the database
@@ -438,10 +445,11 @@ class E7EPD:
             self.part_type = Diode
             self.check_if_table()
 
-    def __init__(self, db_conn: sqlite3.Connection):
+    def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
-        self.conn = db_conn
-        self.config = self.ConfigTable(self.conn.cursor())
+        self.db_conn = db_conn
+        self.conn = self.db_conn.connect()
+        self.config = self.ConfigTable(self.conn.cursor(), self.conn_type)
 
         self.resistors = self.Resistance(self.conn.cursor())
         self.capacitors = self.Capacitors(self.conn.cursor())
@@ -466,7 +474,6 @@ class E7EPD:
             Commits to the database and closes the database connection.
             Call this when exiting your program
         """
-        self.conn.commit()
         self.conn.close()
 
     def save(self):

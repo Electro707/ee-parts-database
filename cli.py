@@ -13,10 +13,11 @@ from engineering_notation import EngNumber
 import questionary
 import pathlib
 import os
+import sys
 import typing
 import json
-import sqlite3
-import mysql.connector
+import sqlalchemy
+import sqlalchemy.future
 
 l = logging.getLogger()
 l.setLevel(logging.WARNING)
@@ -41,18 +42,15 @@ class CLIConfig:
         with open(self.file_path, 'w') as f:
             json.dump(self.config, f)
 
-    def get_database_connection(self):
+    def get_database_connection(self) -> sqlalchemy.future.Engine:
         if 'db' not in self.config:
             raise self.NoDatabaseException()
         if len(self.config['db']) == 0:
             raise self.NoDatabaseException()
         if self.config['db']['type'] == 'local':
-            return sqlite3.connect(self.config['db']['filename'])
+            return sqlalchemy.create_engine("sqlite:///{}".format(self.config['db']['filename']))
         elif self.config['db']['type'] == 'mysql_server':
-            return mysql.connector.connect(host=self.config['db']['db_host'],
-                                           user=self.config['db']['username'],
-                                           password=self.config['db']['password'],
-                                           database=self.config['db']['db_name'], port=3306)
+            return sqlalchemy.create_engine("mysql://{}}:{}@{}:{}/{}".format(self.config['db']['username'], self.config['db']['password'], self.config['db']['db_host'], 3306, self.config['db']['db_name']))
 
     def save_database_as_local(self, file_name):
         if 'db' not in self.config:
@@ -377,23 +375,18 @@ class CLI:
 def ask_for_database(config: CLIConfig):
     console.print("Oh no, no database is configured. Let's get that settled")
     is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['Server', 'Local']).ask()
-    # TODO: Once a server option is added to the backend, then enable this
-    # if is_server == 'Server':
-    #     host = questionary.text("What is the database host?").ask()
-    #     db_name = questionary.text("What is the database name").ask()
-    #     username = questionary.text("What is the database username?").ask()
-    #     password = questionary.password("What is the database password?").ask()
-    #     config.save_database_as_mysql(username=username, db_name=db_name, password=password, host=host)
-    # else:
-    #     file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
-    #     config.save_database_as_local(file_name)
     if is_server == 'Server':
-        console.print("Sorry, but a MySQL server won't be supported until Database Rev0.2")
-        console.print("In the meanwhile, you need to use a local SQLite database")
-    file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
-    if '.db' not in file_name:
-        file_name += '.db'
-    config.save_database_as_local(file_name)
+        host = questionary.text("What is the database host?").ask()
+        db_name = questionary.text("What is the database name").ask()
+        username = questionary.text("What is the database username?").ask()
+        password = questionary.password("What is the database password?").ask()
+        config.save_database_as_mysql(username=username, db_name=db_name, password=password, host=host)
+    else:
+        file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
+        config.save_database_as_local(file_name)
+        if '.db' not in file_name:
+            file_name += '.db'
+        config.save_database_as_local(file_name)
 
 
 if __name__ == "__main__":
@@ -401,7 +394,6 @@ if __name__ == "__main__":
     while 1:
         try:
             db_conn = c.get_database_connection()
-            break
         except c.NoDatabaseException:
             ask_for_database(c)
 
