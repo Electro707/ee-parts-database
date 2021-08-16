@@ -1,4 +1,27 @@
 from dataclasses import dataclass
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, Float, String
+
+_default_string_len = 30
+
+class Base(object):
+    id = Column(Integer, primary_key=True)
+    stock = Column(Integer)
+    manufacturer = Column(String(_default_string_len))
+    storage = Column(String(_default_string_len))
+    mfr_part_numb = Column(String(_default_string_len), nullable=False)
+    package = Column(String(_default_string_len))
+    part_comments = Column(String(_default_string_len))
+    user_comments = Column(String(_default_string_len))
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, item):
+        self.__dict__[key] = item
+
+
+GenericItem = declarative_base(cls=Base)
 
 
 # Outline the different parts storage specifications
@@ -63,57 +86,46 @@ eedata_pcb_spec = [
 ]
 
 
-@dataclass
-class GenericItem:
-    stock: int = None
-    manufacturer: str = None
-    mfr_part_numb: str = None
-    package: str = None
-    part_comments: str = None
-    user_comments: str = None
-
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, item):
-        self.__dict__[key] = item
-
-
-@dataclass
 class Resistor(GenericItem):
-    resistance: float = None
-    tolerance: float = None
-    power: float = None
+    __tablename__ = 'resistance'
+
+    resistance = Column(Float)
+    tolerance = Column(Float)
+    power = Column(Float)
 
 
-@dataclass
 class Capacitor(GenericItem):
-    capacitance: float = None
-    tolerance: float = None
-    power: float = None
-    max_voltage: float = None
-    temp_coeff: str = None
-    cap_type: str = None
+    __tablename__ = 'capacitor'
+
+    capacitance = Column(Float)
+    tolerance = Column(Float)
+    power = Column(Float)
+    max_voltage = Column(Float)
+    temp_coeff = Column(String)
+    cap_type = Column(String)
 
 
-@dataclass
 class Inductor(GenericItem):
-    inductance: float = None
-    tolerance: float = None
-    max_current: float = None
+    __tablename__ = 'inductor'
+
+    inductance = Column(Float)
+    tolerance = Column(Float)
+    max_current = Column(Float)
 
 
-@dataclass
 class Diode(GenericItem):
-    diode_type: str = None
-    max_current: float = None
-    average_current: float = None
-    max_rv: float = None
+    __tablename__ = 'diode'
+
+    diode_type = Column(String)
+    max_current = Column(Float)
+    average_current = Column(Float)
+    max_rv = Column(Float)
 
 
-@dataclass
 class IC(GenericItem):
-    ic_type: str = None
+    __tablename__ = 'ic'
+
+    ic_type = Column(String)
 
 
 @dataclass

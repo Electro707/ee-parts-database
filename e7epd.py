@@ -4,9 +4,12 @@ import os
 import time
 import sqlalchemy
 import sqlalchemy.future
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, Float, String
 import typing
 
-from e707pd_spec import *
+import e707pd_spec as spec
 
 # Version of this backend
 __version__ = '0.3'
@@ -50,43 +53,42 @@ class E7EPD:
     #         return super().execute(sql, parameters)
 
     class ConfigTable:
-        def __init__(self, conn: sqlalchemy.future.Connection):
-            self.conn = conn
-            self.table_name = 'e7epd_config'
-            self.log = logging.getLogger('config')
-            self.check_if_table()
+        _Base = declarative_base()
 
-        def check_if_table(self):
-            if self.cur_type == DBType.sqlite3:
-                self.cur.execute("SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name,))
-                d = self.cur.fetchall()
-                if d[0][0] == 0:
-                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTOINCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
-                    self.cur.execute(sql_command)
-            elif self.cur_type == DBType.mysql:
-                self.cur.execute("SELECT * FROM information_schema.tables WHERE table_name=%s ", (self.table_name,))
-                d = self.cur.fetchall()
-                if len(d) == 0:
-                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
-                    self.cur.execute(sql_command)
+        class _DataBase(_Base):
+            __tablename__ = 'e7epd_config'
+            id = Column(Integer, primary_key=True)
+            key = Column(String)
+            val = Column(String)
+
+        def __init__(self, session: sqlalchemy.orm.Session, engine: sqlalchemy.future.Engine):
+            self.session = session
+            self.log = logging.getLogger('config')
+
+            self._DataBase.metadata.create_all(engine)
 
         def get_info(self, key: str) -> typing.Union[str, None]:
-            self.cur.execute("SELECT db_keys, val FROM " + self.table_name + " WHERE db_keys=?", [key])
-            d = self.cur.fetchall()
+            d = self.session.query(self._DataBase).filter_by(key=key).all()
             if len(d) == 0:
                 return None
             elif len(d) == 1:
-                return d[0][1]
+                return d[0].val
             else:
                 raise UserWarning("There isn't supposed to be more than 1 key")
 
         def store_info(self, key: str, value: str):
-            if self.get_info(key) is None:  # There isn't an entry for this, so create it
-                self.cur.execute("INSERT INTO " + self.table_name + "(db_keys, val) VALUES (?, ?)", [key, value])
+            d = self.session.query(self._DataBase).filter_by(key=key).all()
+            if len(d) == 0:
+                p = self._DataBase(key=key, val=value)
+                self.session.add(p)
                 self.log.debug('Inserted key-value pair: {}={}'.format(key, value))
-            else:
-                self.cur.execute("UPDATE " + self.table_name + " SET val=? WHERE db_keys=?", [value, key])
+            elif len(d) == 1:
+                p = d[0].val = value
                 self.log.debug('Updated key {} with value {}'.format(key, value))
+            else:
+                raise UserWarning("There isn't supposed to be more than 1 key")
+
+            self.session.commit()
 
         def get_db_version(self) -> typing.Union[str, None]:
             return self.get_info('db_ver')
@@ -96,30 +98,23 @@ class E7EPD:
 
     class GenericPart:
         """ This is a generic part constructor, which other components (like Resistors) will base off of """
-        def __init__(self, cursor: sqlite3.Cursor):
-            self.cur = cursor
-            self.table_name = None      # type: str
-            self.table_item_spec = None     # type: list
-            self.table_item_display_order = None        # type: list
-            self.part_type = GenericItem
-            self.log = logging.getLogger(self.table_name)
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.session = session
+            self.table_item_spec: list
+            self.table_item_display_order: list
+            self.part_type: spec.GenericItem
 
-        def check_if_table(self):
-            """ Function that checks if the proper table is setup, and creates one if there isn't """
-            if self.cur_type == DBType.sqlite3:
-                self.cur.execute("SELECT count(name) FROM sqlite_schema WHERE type='table' AND name=? ", (self.table_name,))
-                d = self.cur.fetchall()
-                if d[0][0] == 0:
-                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTOINCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
-                    self.cur.execute(sql_command)
-            elif self.cur_type == DBType.mysql:
-                self.cur.execute("SELECT * FROM information_schema.tables WHERE table_name=%s ", (self.table_name,))
-                d = self.cur.fetchall()
-                if len(d) == 0:
-                    sql_command = "CREATE TABLE " + self.table_name + " (id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY, db_keys VARCHAR(20) NOT NULL, val VARCHAR(20) NOT NULL);"
-                    self.cur.execute(sql_command)
+            if not hasattr(self, 'table_item_spec'):
+                self.table_item_spec = None
+            if not hasattr(self, 'table_item_display_order'):
+                self.table_item_display_order = None
+            if not hasattr(self, 'part_type'):
+                self.part_type = None
 
-        def check_if_already_in_db(self, part_info: GenericItem):
+            self.table_name = self.part_type.__tablename__
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+        def check_if_already_in_db(self, part_info: spec.GenericItem):
             """ Checks if a given part is already in the database
                 Currently it's done through checking for a match with the manufacturer part number
 
@@ -148,18 +143,17 @@ class E7EPD:
                     InputException: If the manufacturer part number is None, this will get raised
             """
             if mfr_part_numb is not None:
-                self.cur.execute(" SELECT id FROM "+self.table_name+" WHERE mfr_part_numb=? ", (mfr_part_numb, ))
-                d = self.cur.fetchall()
+                d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).all()
                 if len(d) == 0:
                     return None
                 elif len(d) == 1:
-                    return d[0][0]
+                    return d[0].id
                 else:
                     raise UserWarning("There is more than 1 entry for a manufacturer part number")
             else:
                 raise InputException("Did not give a manufacturer part number")
 
-        def get_part_by_id(self, sql_id: int) -> GenericItem:
+        def get_part_by_id(self, sql_id: int) -> spec.GenericItem:
             """
                 Function that returns parts parameters by part ID
 
@@ -172,22 +166,16 @@ class E7EPD:
                 Raises:
                     EmptyInDatabase: If the SQL ID does not exist in the database
             """
-            sql_command = "SELECT "
-            for i, item in enumerate(self.table_item_spec):
-                sql_command += item['db_name'] + ", "
-            # Remove last comma
-            sql_command = sql_command[:-2] + "FROM" + self.table_name + "WHERE id=?"
-            self.cur.execute(sql_command, (sql_id, ))
-            d = self.cur.fetchall()
-            ret = self.part_type()
+            d = self.session.query(self.part_type).filter_by(id=sql_id).all()
             if len(d) == 0:
                 raise EmptyInDatabase()
             elif len(d) == 1:
-                for i, item in enumerate(self.table_item_spec):
-                    ret[item['db_name']] = d[0][i]
-                return ret
+                return d[0]
+            else:
+                # TODO: Add exception, as having more than 1 of the same ID is impossible
+                pass
 
-        def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> GenericItem:
+        def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> spec.GenericItem:
             """
                 Function that returns parts parameters by part ID
 
@@ -200,22 +188,16 @@ class E7EPD:
                 Raises:
                     EmptyInDatabase: If the SQL ID does not exist in the database
             """
-            sql_command = "SELECT "
-            for i, item in enumerate(self.table_item_spec):
-                sql_command += item['db_name'] + ", "
-            # Remove last comma
-            sql_command = sql_command[:-2] + " FROM " + self.table_name + " WHERE mfr_part_numb=?"
-            self.cur.execute(sql_command, (mfr_part_numb, ))
-            d = self.cur.fetchall()
-            ret = self.part_type()
+            d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).all()
             if len(d) == 0:
                 raise EmptyInDatabase()
             elif len(d) == 1:
-                for i, item in enumerate(self.table_item_spec):
-                    ret[item['db_name']] = d[0][i]
-                return ret
+                return d[0]
+            else:
+                # TODO: Add exception, as having more than 1 of the same ID is impossible
+                pass
 
-        def update_part(self, part_info: GenericItem):
+        def update_part(self, part_info: spec.GenericItem):
             """
                 Update a part based on manufacturer part number
 
@@ -223,15 +205,8 @@ class E7EPD:
                      part_info (GenericItem): The part item class you want to update
             """
             if part_info.mfr_part_numb is not None:
-                sql_command = "UPDATE " + self.table_name + " SET "
-                sql_params = []
-                for i, item in enumerate(self.table_item_spec):
-                    sql_command += item['db_name'] + "=?,"
-                    sql_params.append(part_info[item['db_name']])
-                # Remove last comma
-                sql_command = sql_command[:-1] + "WHERE mfr_part_numb=?"
-                sql_params.append(part_info.mfr_part_numb)
-                self.cur.execute(sql_command, sql_params)
+                q = self.session.query(self.part_type).filter_by(mfr_part_numb=part_info.mfr_part_numb)
+                q.update(part_info, synchronize_session="fetch")
 
         def delete_part_by_mfr_number(self, mfr_part_numb: str):
             """
@@ -247,10 +222,9 @@ class E7EPD:
             if to_del_id is None:
                 raise EmptyInDatabase()
             self.log.debug("Deleting part %s with ID %s" % (mfr_part_numb, to_del_id))
-            sql_command = "DELETE FROM " + self.table_name + " WHERE id=?"
-            self.cur.execute(sql_command, [to_del_id, ])
+            self.session.delete(self.get_part_by_mfr_part_numb(to_del_id))
 
-        def create_part(self, part_info: GenericItem):
+        def create_part(self, part_info: spec.GenericItem):
             """
                 Function to create a part for the given info
 
@@ -269,22 +243,12 @@ class E7EPD:
             # Create a new part inside the database
             self._insert_part_in_db(part_info)
 
-        def _insert_part_in_db(self, part_info: GenericItem):
+        def _insert_part_in_db(self, part_info: spec.GenericItem):
             """ Internal function to insert a part into the database """
             # Run an insert command into the database
-            sql_params = []
-            sql_command = "INSERT INTO " + self.table_name + " ("
-            for i, item in enumerate(self.table_item_spec):
-                sql_command += item['db_name'] + ", "
-            # Remove last comma and space
-            sql_command = sql_command[:-2] + ") VALUES ("
-            for i, item in enumerate(self.table_item_spec):
-                # if part_info[item['db_name']] is None:
-                #     part_info[item['db_name']] = 'NULL'
-                sql_command += "?, "
-                sql_params.append(part_info[item['db_name']])
-            sql_command = sql_command[:-2] + ");"
-            self.cur.execute(sql_command, sql_params)
+            self.log.debug('Inserting %s into database' % part_info)
+            self.session.add(part_info)
+            self.session.commit()
 
         def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int):
             """ Appends stock to a part by the manufacturer part number
@@ -296,12 +260,8 @@ class E7EPD:
             Raises:
                 EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
             """
-            p_id = self.check_if_already_in_db_by_manuf(mfr_part_numb)
-            if p_id is None:
-                raise EmptyInDatabase()
-            sql_command = "UPDATE " + self.table_name + " SET stock=stock+? WHERE id=?"
-            sql_params = [append_by, p_id]
-            self.cur.execute(sql_command, sql_params)
+            part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+            part.stock += append_by
 
         def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int):
             """ Removes stock from a part by the manufacturer part number
@@ -317,30 +277,15 @@ class E7EPD:
             part.stock -= remove_by
             if part.stock < 0:
                 raise NegativeStock(part.stock+remove_by)
-            self.update_part(part)
+            self.session.commit()
 
-        def get_all_parts(self) -> typing.List[GenericItem]:
+        def get_all_parts(self) -> typing.List[spec.GenericItem]:
             """ Get all parts in the database
 
                 Returns:
                     EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
             """
-            sql_command = "SELECT "
-            for i, item in enumerate(self.table_item_spec):
-                sql_command += item['db_name'] + ", "
-            # Remove last comma
-            sql_command = sql_command[:-2] + " FROM " + self.table_name
-            self.cur.execute(sql_command)
-            d = self.cur.fetchall()
-            ret = []
-            if len(d) == 0:
-                raise EmptyInDatabase()
-            for db_part in d:
-                part = self.part_type()
-                for i, item in enumerate(self.table_item_spec):
-                    part[item['db_name']] = db_part[i]
-                ret.append(part)
-            return ret
+            return self.session.query(self.part_type).all()
 
         def get_all_mfr_part_numb_in_db(self) -> list:
             """ Get all manufaturer part numbers as a list
@@ -348,40 +293,27 @@ class E7EPD:
             Returns:
                 A list of all manufacturer part numbers in the database
             """
-            to_ret = []
-            self.cur.execute("SELECT mfr_part_numb FROM " + self.table_name + ";")
-            d = self.cur.fetchall()
-            ret = []
+            d = self.session.query(self.part_type).all()
             if len(d) == 0:
                 raise EmptyInDatabase()
-            for m in d:
-                ret.append(m[0])
-            return ret
+            return [p.mfr_part_numb for p in d]
 
-        def get_sorted_parts(self, part_filter: GenericItem):
-            sql_command = "SELECT "
-            sql_params = []
+        def get_sorted_parts(self, part_filter: spec.GenericItem):
+            q = self.session.query(self.part_type)
+
+            if q.count() == 0:
+                raise EmptyInDatabase()
+
+            filter_const = {}
             for i, item in enumerate(self.table_item_spec):
-                sql_command += item['db_name'] + ", "
-            # Remove last comma
-            sql_command = sql_command[:-2] + " FROM " + self.table_name + " WHERE "
-            for i, item in enumerate(self.table_item_spec):
+                if item['db_name'] not in part_filter.__dict__:
+                    continue
                 if part_filter[item['db_name']] is None:
                     continue
-                sql_command += "{}=?, ".format(item['db_name'])
-                sql_params.append(part_filter[item['db_name']])
-            sql_command = sql_command[:-2] + ';'
-            self.cur.execute(sql_command, sql_params)
-            d = self.cur.fetchall()
-            ret = []
-            if len(d) == 0:
-                raise EmptyInDatabase()
-            for db_part in d:
-                part = self.part_type()
-                for i, item in enumerate(self.table_item_spec):
-                    part[item['db_name']] = db_part[i]
-                ret.append(part)
-            return ret
+                filter_const[item['db_name']] = part_filter[item['db_name']]
+
+            d = q.filter_by(**filter_const)
+            return d
 
         def is_database_empty(self):
             """ Checks if the database is empty
@@ -389,73 +321,72 @@ class E7EPD:
             Returns:
                 True if the database is empty, False if not
             """
-            self.cur.execute(" SELECT id FROM " + self.table_name)
-            d = self.cur.fetchall()
-            if len(d) == 0:
+            d = self.session.query(self.part_type).count()
+            self.log.debug('Number of parts in database for %s: %s' % (self.table_name, d))
+            if d == 0:
                 return True
             return False
 
         def drop_table(self):
             """ Drops the database table and create a new one. Also known as the Nuke option """
-            self.log.warning("DROPPING TABLE FOR THIS PART (%s)...DON'T REGRET THIS LATER!" % self.table_name)
-            self.cur.execute("DROP TABLE " + self.table_name)
+            self.log.warning("DROPPING TABLE FOR THIS PART (%s)...DON'T REGRET THIS LATER!" % self.part_type.__tablename__)
+            self.part_type.__table__.drop()
 
     class Resistance(GenericPart):
-        def __init__(self, cursor: sqlite3.Cursor):
-            super().__init__(cursor)
-            self.table_name = 'resistance'
-            self.table_item_spec = eedata_resistors_spec
-            self.table_item_display_order = eedata_resistor_display_order
-            self.part_type = Resistor
-            self.check_if_table()
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_resistors_spec
+            self.table_item_display_order = spec.eedata_resistor_display_order
+            self.part_type = spec.Resistor
+
+            super().__init__(session)
 
     class Capacitors(GenericPart):
-        def __init__(self, cursor: sqlite3.Cursor):
-            super().__init__(cursor)
-            self.table_name = 'capacitor'
-            self.table_item_spec = eedata_capacitor_spec
-            self.table_item_display_order = eedata_capacitor_display_order
-            self.part_type = Capacitor
-            self.check_if_table()
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_capacitor_spec
+            self.table_item_display_order = spec.eedata_capacitor_display_order
+            self.part_type = spec.Capacitor
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
 
     class Inductors(GenericPart):
-        def __init__(self, cursor: sqlite3.Cursor):
-            super().__init__(cursor)
-            self.table_name = 'inductor'
-            self.table_item_spec = eedata_inductor_spec
-            self.table_item_display_order = eedata_inductor_display_order
-            self.part_type = Inductor
-            self.check_if_table()
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_inductor_spec
+            self.table_item_display_order = spec.eedata_inductor_display_order
+            self.part_type = spec.Inductor
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
 
     class ICs(GenericPart):
-        def __init__(self, cursor: sqlite3.Cursor):
-            super().__init__(cursor)
-            self.table_name = 'ic'
-            self.table_item_spec = eedata_ic_spec
-            self.table_item_display_order = eedata_ic_display_order
-            self.part_type = IC
-            self.check_if_table()
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_ic_spec
+            self.table_item_display_order = spec.eedata_ic_display_order
+            self.part_type = spec.IC
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
 
     class Diodes(GenericPart):
-        def __init__(self, cursor: sqlite3.Cursor):
-            super().__init__(cursor)
-            self.table_name = 'diode'
-            self.table_item_spec = eedata_diode_spec
-            self.table_item_display_order = eedata_diode_display_order
-            self.part_type = Diode
-            self.check_if_table()
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_diode_spec
+            self.table_item_display_order = spec.eedata_diode_display_order
+            self.part_type = spec.Diode
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
 
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
         self.db_conn = db_conn
-        self.conn = self.db_conn.connect()
-        self.config = self.ConfigTable(self.conn.cursor(), self.conn_type)
 
-        self.resistors = self.Resistance(self.conn.cursor())
-        self.capacitors = self.Capacitors(self.conn.cursor())
-        self.inductors = self.Inductors(self.conn.cursor())
-        self.ics = self.ICs(self.conn.cursor())
-        self.diodes = self.Diodes(self.conn.cursor())
+        self.config = self.ConfigTable(sessionmaker(self.db_conn)(), self.db_conn)
+
+        self.resistors = self.Resistance(sessionmaker(self.db_conn)())
+        self.capacitors = self.Capacitors(sessionmaker(self.db_conn)())
+        self.inductors = self.Inductors(sessionmaker(self.db_conn)())
+        self.ics = self.ICs(sessionmaker(self.db_conn)())
+        self.diodes = self.Diodes(sessionmaker(self.db_conn)())
 
         self.components = {
             'Resistors': self.resistors,
@@ -464,6 +395,8 @@ class E7EPD:
             'ICs': self.ics,
             'Diodes': self.diodes
         }
+
+        spec.GenericItem.metadata.create_all(self.db_conn)
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
@@ -474,13 +407,17 @@ class E7EPD:
             Commits to the database and closes the database connection.
             Call this when exiting your program
         """
-        self.conn.close()
+        for c in self.components.values():
+            c.session.commit()
+            c.session.flush()
+            c.session.close()
 
     def save(self):
         """
             Saves any changes done to the database
         """
-        self.conn.commit()
+        for c in self.components.values():
+            c.session.commit()
 
     def wipe_database(self):
         """
@@ -488,8 +425,8 @@ class E7EPD:
         """
         for c in self.components:
             self.components[c].drop_table()
-            # Recreate table
-            self.components[c].check_if_table()
+        # Recreate table
+        spec.GenericItem.metadata.create_all(self.db_conn)
 
     def update_database(self):
         """
@@ -499,7 +436,11 @@ class E7EPD:
         self.backup_db()
         if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3: Add storage to all parts
             for c in self.components:
-                self.components[c].cur.execute("ALTER TABLE " + self.components[c].table_name + " ADD storage VARCHAR")
+                # self.components[c].cur.execute("ALTER TABLE " + self.components[c].table_name + " ADD storage VARCHAR")
+                column_name = self.components[c].part_type.storage.name
+                column_type = self.components[c].part_type.storage.type.compile(self.db_conn.dialect)
+                print(column_name, column_type)
+                self.components[c].session.execute('ALTER TABLE %s ADD COLUMN %s %s' % (self.components[c].table_name, column_name, column_type))
         self.config.store_db_version()
 
     def is_latest_database(self) -> bool:
@@ -516,6 +457,7 @@ class E7EPD:
         """
             Backs up the database under a new backup file
         """
+        return
         new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s' % time.strftime('%y%m%d%H%M%S')
         self.log.info("Backing database under %s" % new_db_file)
         # For now do with only SQLite3

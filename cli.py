@@ -11,6 +11,8 @@ import rich.table
 import decimal
 from engineering_notation import EngNumber
 import questionary
+import prompt_toolkit
+import prompt_toolkit.formatted_text
 import pathlib
 import os
 import sys
@@ -20,7 +22,7 @@ import sqlalchemy
 import sqlalchemy.future
 
 l = logging.getLogger()
-l.setLevel(logging.WARNING)
+l.setLevel(logging.DEBUG)
 l.addHandler(RichHandler())
 
 console = rich.console.Console(style="blue")
@@ -50,7 +52,7 @@ class CLIConfig:
         if self.config['db']['type'] == 'local':
             return sqlalchemy.create_engine("sqlite:///{}".format(self.config['db']['filename']))
         elif self.config['db']['type'] == 'mysql_server':
-            return sqlalchemy.create_engine("mysql://{}}:{}@{}:{}/{}".format(self.config['db']['username'], self.config['db']['password'], self.config['db']['db_host'], 3306, self.config['db']['db_name']))
+            return sqlalchemy.create_engine("mysql://{}:{}@{}:{}/{}".format(self.config['db']['username'], self.config['db']['password'], self.config['db']['db_host'], 3306, self.config['db']['db_name']))
 
     def save_database_as_local(self, file_name):
         if 'db' not in self.config:
@@ -78,7 +80,7 @@ class CLI:
     class _HelperFunctionExitError(Exception):
         pass
 
-    def __init__(self, config: CLIConfig, database_connection):
+    def __init__(self, config: CLIConfig, database_connection: sqlalchemy.future.Engine):
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
@@ -115,7 +117,7 @@ class CLI:
                 raise self._HelperFunctionExitError()
         return mfr_part_numb.upper()
 
-    def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.GenericItem], title):
+    def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
         ta = rich.table.Table(title=title)
         for spec_db_name in part_db.table_item_display_order:
@@ -178,15 +180,35 @@ class CLI:
             break
         return inp
 
+    @staticmethod
+    def get_autocomplete_list(db_name: str, table_name: str) -> typing.Union[None, list]:
+        autocomplete_choices = None
+        if db_name == 'manufacturer' and table_name == 'ic':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_manufacturers']
+        elif db_name == 'ic_type' and table_name == 'ic':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_types']
+        elif db_name == 'cap_type' and table_name == 'capacitor':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['capacitor_types']
+        elif db_name == 'diode_type' and table_name == 'diode':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['diode_type']
+        return autocomplete_choices
+
     def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
         choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
         specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
+        if specs_selected is None:
+            return
         if len(specs_selected) == 0:
             console.print("[red]Must choose something[/]")
             return
         part_filter = part_db.part_type()
         for spec in specs_selected:
-            inp = self.ask_for_spec_input(spec)
+            autocomplete_choices = self.get_autocomplete_list(spec['db_name'], part_db.table_name)
+            try:
+                inp = self.ask_for_spec_input(spec, autocomplete_choices)
+            except KeyboardInterrupt:
+                console.print("Canceled part lookup")
+                return
             part_filter[spec['db_name']] = inp
         print(part_filter)
         try:
@@ -209,15 +231,7 @@ class CLI:
                 if spec_db_name == 'mfr_part_numb':
                     continue
                 # Select an autocomplete choice, or None if there isn't any
-                autocomplete_choices = None
-                if spec_db_name == 'manufacturer' and part_db.table_name == 'ic':
-                    autocomplete_choices = e7epd.autofill_helpers_list['ic_manufacturers']
-                elif spec_db_name == 'ic_type' and part_db.table_name == 'ic':
-                    autocomplete_choices = e7epd.autofill_helpers_list['ic_types']
-                elif spec_db_name == 'cap_type' and part_db.table_name == 'capacitor':
-                    autocomplete_choices = e7epd.autofill_helpers_list['capacitor_types']
-                elif spec_db_name == 'diode_type' and part_db.table_name == 'diode':
-                    autocomplete_choices = e7epd.autofill_helpers_list['diode_type']
+                autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_db.table_name)
                 # Get the spec
                 spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
                 if spec is None:
@@ -296,10 +310,10 @@ class CLI:
     def component_cli(self, part_db: e7epd.E7EPD.GenericPart):
         """ The CLI handler for components """
         while 1:
-            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Nothing"]).ask()
+            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red green', 'Return')]))]).ask()
             if to_do is None:
                 raise KeyboardInterrupt()
-            if to_do == "Nothing":
+            if to_do == "Return":
                 break
             elif to_do == "Print parts in DB":
                 if part_db.is_database_empty():
@@ -321,10 +335,10 @@ class CLI:
 
     def choose_component(self):
         while 1:
-            component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + ['Exit']).ask()
+            component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red green', 'Return')]))]).ask()
             if component is None:
                 raise KeyboardInterrupt()
-            elif component == 'Exit':
+            elif component == 'Return':
                 break
 
             part_db = self.db.components[component]
@@ -394,6 +408,7 @@ if __name__ == "__main__":
     while 1:
         try:
             db_conn = c.get_database_connection()
+            break
         except c.NoDatabaseException:
             ask_for_database(c)
 
