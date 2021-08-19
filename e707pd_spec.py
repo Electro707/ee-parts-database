@@ -2,17 +2,18 @@ from dataclasses import dataclass
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, Float, String
 
-_default_string_len = 30
+default_string_len = 30
+
 
 class Base(object):
     id = Column(Integer, primary_key=True)
     stock = Column(Integer)
-    manufacturer = Column(String(_default_string_len))
-    storage = Column(String(_default_string_len))
-    mfr_part_numb = Column(String(_default_string_len), nullable=False)
-    package = Column(String(_default_string_len))
-    part_comments = Column(String(_default_string_len))
-    user_comments = Column(String(_default_string_len))
+    manufacturer = Column(String(default_string_len))
+    storage = Column(String(default_string_len))
+    for_project = Column(String(default_string_len))
+    mfr_part_numb = Column(String(default_string_len), nullable=False)
+    package = Column(String(default_string_len))
+    comments = Column(String(default_string_len))
 
     def __getitem__(self, key):
         return self.__dict__[key]
@@ -34,10 +35,10 @@ eedata_generic_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'db_type': "INT NOT NULL", 'shows_as': "normal", 'required': True, },
     {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'db_type': "VARCHAR NOT NULL", "shows_as": "normal", 'required': True, },
     {'db_name': 'manufacturer', 'showcase_name': 'Manufacturer', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
-    {'db_name': 'package', "showcase_name": "Package", "db_type": "VARCHAR(20) NOT NULL", "shows_as": "normal", 'required': True, },
+    {'db_name': 'package', "showcase_name": "Package", "db_type": "VARCHAR NOT NULL", "shows_as": "normal", 'required': True, },
     {'db_name': 'storage', 'showcase_name': 'Storage Location', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
-    {'db_name': 'part_comments', "showcase_name": "Part Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
-    {'db_name': 'user_comments', "showcase_name": "User Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
+    {'db_name': 'for_project', 'showcase_name': 'For Project', 'db_type': "VARCHAR", "shows_as": "normal", 'required': False, },
+    {'db_name': 'comments', "showcase_name": "Comments", "db_type": "MEDIUMTEXT", "shows_as": "normal", 'required': False, },
 ]
 
 eedata_resistors_spec = eedata_generic_spec + [
@@ -45,7 +46,7 @@ eedata_resistors_spec = eedata_generic_spec + [
     {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
     {'db_name': 'power', "showcase_name": "Power Rating", 'db_type': "FLOAT", 'shows_as': 'normal', 'required': False, }
 ]
-eedata_resistor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'resistance', 'tolerance', 'power', 'package', 'part_comments', 'user_comments']
+eedata_resistor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'resistance', 'tolerance', 'power', 'package', 'for_project', 'comments']
 
 eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'capacitance', 'showcase_name': "Capacitance", 'db_type': "FLOAT NOT NULL", 'shows_as': "engineering", 'required': True, },
@@ -55,19 +56,19 @@ eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'temp_coeff', "showcase_name": "Temperature Coefficient", 'db_type': "VARCHAR", 'shows_as': 'normal', 'required': False, },
     {'db_name': 'cap_type', "showcase_name": "Capacitor Type", 'db_type': "VARCHAR", 'shows_as': 'normal', 'required': False, },
 ]
-eedata_capacitor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'capacitance', 'tolerance', 'power', 'max_voltage', 'cap_type', 'temp_coeff', 'package', 'part_comments', 'user_comments']
+eedata_capacitor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'capacitance', 'tolerance', 'power', 'max_voltage', 'cap_type', 'temp_coeff', 'package', 'for_project', 'comments']
 
 eedata_ic_spec = eedata_generic_spec + [
     {'db_name': 'ic_type', 'showcase_name': "IC Type", 'db_type': "VARCHAR NOT NULL", 'shows_as': 'normal', 'required': True},
 ]
-eedata_ic_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'ic_type', 'part_comments', 'package', 'user_comments']
+eedata_ic_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'ic_type', 'package', 'for_project', 'comments']
 
 eedata_inductor_spec = eedata_generic_spec + [
     {'db_name': 'inductance', "showcase_name": "Tolerance", "db_type": "FLOAT NOT NULL", "shows_as": "engineering", 'required': True, },
     {'db_name': 'tolerance', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "percentage", 'required': False, },
     {'db_name': 'max_current', "showcase_name": "Tolerance", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
 ]
-eedata_inductor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'inductance', 'tolerance', 'max_current', 'package', 'part_comments', 'user_comments']
+eedata_inductor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'inductance', 'tolerance', 'max_current', 'package', 'for_project', 'comments']
 
 eedata_diode_spec = eedata_generic_spec + [
     {'db_name': 'diode_type', "showcase_name": "Diode Type", "db_type": "VARCHAR NOT NULL", "shows_as": "normal", 'required': True, },
@@ -75,7 +76,7 @@ eedata_diode_spec = eedata_generic_spec + [
     {'db_name': 'average_current', "showcase_name": "Average Current", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
     {'db_name': 'max_rv', "showcase_name": "Max Reverse Voltage", "db_type": "FLOAT", "shows_as": "engineering", 'required': False, },
 ]
-eedata_diode_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'diode_type', 'max_rv', 'average_current', 'max_current', 'package', 'part_comments', 'user_comments']
+eedata_diode_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'diode_type', 'max_rv', 'average_current', 'max_current', 'package', 'for_project', 'comments']
 
 eedata_pcb_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'db_type': "INT NOT NULL", 'shows_as': "normal", 'required': True, },
@@ -101,8 +102,8 @@ class Capacitor(GenericItem):
     tolerance = Column(Float)
     power = Column(Float)
     max_voltage = Column(Float)
-    temp_coeff = Column(String)
-    cap_type = Column(String)
+    temp_coeff = Column(String(default_string_len))
+    cap_type = Column(String(default_string_len))
 
 
 class Inductor(GenericItem):
@@ -116,7 +117,7 @@ class Inductor(GenericItem):
 class Diode(GenericItem):
     __tablename__ = 'diode'
 
-    diode_type = Column(String)
+    diode_type = Column(String(default_string_len))
     max_current = Column(Float)
     average_current = Column(Float)
     max_rv = Column(Float)
@@ -125,7 +126,7 @@ class Diode(GenericItem):
 class IC(GenericItem):
     __tablename__ = 'ic'
 
-    ic_type = Column(String)
+    ic_type = Column(String(default_string_len))
 
 
 @dataclass
@@ -141,8 +142,8 @@ class PCB:
     While not part of the spec, but these are handly for autofills
 """
 autofill_helpers_list = {
-    'ic_manufacturers': ["Microchip", "TI", "Analog Devices", "On-Semi", "STMicroelectronics",
-                         "Cypress Semiconductors", "Infineon"],
+    'ic_manufacturers': ["MICROCHIP", "TI", "ANALOG DEVICES", "ON-SEMI", "STMICROELECTRONICS",
+                         "CYPRESS SEMI", "INFINEON"],
     'ic_types': ["Microcontroller", "Boost Converter", "Buck Converter", "FPGA", "Battery Charger", "Battery Management",
                  "LED Driver", "Multiplexer"],
     'capacitor_types': ['electrolytic', 'ceramic', 'tantalum', 'paper', 'film'],

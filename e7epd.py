@@ -7,6 +7,8 @@ import sqlalchemy.future
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, Float, String
+from alembic.runtime.migration import MigrationContext
+from alembic.operations import Operations
 import typing
 
 import e707pd_spec as spec
@@ -58,8 +60,8 @@ class E7EPD:
         class _DataBase(_Base):
             __tablename__ = 'e7epd_config'
             id = Column(Integer, primary_key=True)
-            key = Column(String)
-            val = Column(String)
+            key = Column(String(spec.default_string_len))
+            val = Column(String(spec.default_string_len))
 
         def __init__(self, session: sqlalchemy.orm.Session, engine: sqlalchemy.future.Engine):
             self.session = session
@@ -218,11 +220,8 @@ class E7EPD:
                 Raises:
                      EmptyInDatabase: Raises this exception if there is no part in the database with that manufacturer part number
             """
-            to_del_id = self.check_if_already_in_db_by_manuf(mfr_part_numb)
-            if to_del_id is None:
-                raise EmptyInDatabase()
-            self.log.debug("Deleting part %s with ID %s" % (mfr_part_numb, to_del_id))
-            self.session.delete(self.get_part_by_mfr_part_numb(to_del_id))
+            self.log.debug("Deleting part %s" % mfr_part_numb)
+            self.session.delete(self.get_part_by_mfr_part_numb(mfr_part_numb))
 
         def create_part(self, part_info: spec.GenericItem):
             """
@@ -327,11 +326,6 @@ class E7EPD:
                 return True
             return False
 
-        def drop_table(self):
-            """ Drops the database table and create a new one. Also known as the Nuke option """
-            self.log.warning("DROPPING TABLE FOR THIS PART (%s)...DON'T REGRET THIS LATER!" % self.part_type.__tablename__)
-            self.part_type.__table__.drop()
-
     class Resistance(GenericPart):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_resistors_spec
@@ -423,25 +417,32 @@ class E7EPD:
         """
             Wipes the component databases
         """
-        for c in self.components:
-            self.components[c].drop_table()
+        spec.GenericItem.metadata.drop_all(self.db_conn)
         # Recreate table
         spec.GenericItem.metadata.create_all(self.db_conn)
+
+    @staticmethod
+    def add_column_to_table(engine: sqlalchemy.future.Engine, session: sqlalchemy.orm.Session, column: sqlalchemy.Column, table_name: str):
+        column_name = column.name
+        column_type = column.type.compile(engine.dialect)
+        session.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table_name, column_name, column_type))
 
     def update_database(self):
         """
             Updates the database to the most recent revision
         """
-        self.log.info("Backing up database before applying changes")
-        self.backup_db()
-        if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3: Add storage to all parts
-            for c in self.components:
-                # self.components[c].cur.execute("ALTER TABLE " + self.components[c].table_name + " ADD storage VARCHAR")
-                column_name = self.components[c].part_type.storage.name
-                column_type = self.components[c].part_type.storage.type.compile(self.db_conn.dialect)
-                print(column_name, column_type)
-                self.components[c].session.execute('ALTER TABLE %s ADD COLUMN %s %s' % (self.components[c].table_name, column_name, column_type))
-        self.config.store_db_version()
+        with self.db_conn.connect() as conn:
+            ctx = MigrationContext.configure(conn)
+            op = Operations(ctx)
+            self.log.info("Backing up database before applying changes")
+            self.backup_db()
+            if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3: Add storage to all parts
+                for c in self.components:
+                    op.add_column(self.components[c].table_name, Column('storage', String(spec.default_string_len)))
+                    op.add_column(self.components[c].table_name, Column('for_project', String(spec.default_string_len)))
+                    op.drop_column(self.components[c].table_name, 'part_comments')
+                    op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments')
+            self.config.store_db_version()
 
     def is_latest_database(self) -> bool:
         """
@@ -457,6 +458,7 @@ class E7EPD:
         """
             Backs up the database under a new backup file
         """
+        self.log.error('BACKUP FUNCTION IS INACTIVE')
         return
         new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s' % time.strftime('%y%m%d%H%M%S')
         self.log.info("Backing database under %s" % new_db_file)
