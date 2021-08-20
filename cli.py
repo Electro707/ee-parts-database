@@ -11,12 +11,15 @@ import rich.table
 import decimal
 from engineering_notation import EngNumber
 import questionary
+import prompt_toolkit
+import prompt_toolkit.formatted_text
 import pathlib
 import os
+import sys
 import typing
 import json
-import sqlite3
-import mysql.connector
+import sqlalchemy
+import sqlalchemy.future
 
 l = logging.getLogger()
 l.setLevel(logging.WARNING)
@@ -30,6 +33,10 @@ class CLIConfig:
         def __init__(self):
             super().__init__("No Database")
 
+    class NoLastDBSelectionException(Exception):
+        def __init__(self):
+            super().__init__("There isn't a last selected database")
+
     def __init__(self):
         self.file_path = os.path.dirname(os.path.abspath(__file__)) + '/cli_config.json'
         self.config = {}
@@ -41,48 +48,75 @@ class CLIConfig:
         with open(self.file_path, 'w') as f:
             json.dump(self.config, f)
 
-    def get_database_connection(self):
-        if 'db' not in self.config:
+    def get_database_connection(self, database_name: str = None) -> sqlalchemy.future.Engine:
+        if 'db_list' not in self.config:
             raise self.NoDatabaseException()
-        if len(self.config['db']) == 0:
+        if len(self.config['db_list']) == 0:
             raise self.NoDatabaseException()
-        if self.config['db']['type'] == 'local':
-            return sqlite3.connect(self.config['db']['filename'])
-        elif self.config['db']['type'] == 'mysql_server':
-            return mysql.connector.connect(host=self.config['db']['db_host'],
-                                           user=self.config['db']['username'],
-                                           password=self.config['db']['password'],
-                                           database=self.config['db']['db_name'], port=3306)
+        if database_name is None:
+            if 'last_db' not in self.config:
+                raise self.NoLastDBSelectionException()
+            database_name = self.config['last_db']
+        if database_name not in self.config['db_list']:
+            raise self.NoLastDBSelectionException()
 
-    def save_database_as_local(self, file_name):
-        if 'db' not in self.config:
-            self.config['db'] = {}
+        self.config['last_db'] = database_name
+        if self.config['db_list'][database_name]['type'] == 'local':
+            return sqlalchemy.create_engine("sqlite:///{}".format(self.config['db_list'][database_name]['filename']))
+        elif self.config['db_list'][database_name]['type'] == 'mysql_server':
+            return sqlalchemy.create_engine("mysql://{}:{}@{}:{}/{}".format(self.config['db_list'][database_name]['username'],
+                                                                            self.config['db_list'][database_name]['password'],
+                                                                            self.config['db_list'][database_name]['db_host'], 3306,
+                                                                            self.config['db_list'][database_name]['db_name']))
+
+    def get_stored_db_names(self) -> list:
+        if 'db_list' not in self.config:
+            raise self.NoDatabaseException()
+        if len(self.config['db_list']) == 0:
+            raise self.NoDatabaseException()
+        return self.config['db_list'].keys()
+
+    def get_selected_database(self) -> str:
+        return self.config['last_db']
+
+    def set_last_db(self, database_name: str):
+        self.config['last_db'] = database_name
+
+    def save_database_as_sqlite(self, database_name: str, file_name: str):
         if '.db' not in file_name:
             raise UserWarning("No .db externsion in filename")
-        self.config['db']['type'] = 'local'
-        self.config['db']['filename'] = file_name
+        if 'db_list' not in self.config:
+            self.config['db_list'] = {}
+        if database_name not in self.config['db_list']:
+            self.config['db_list'][database_name] = {}
+        self.config['db_list'][database_name]['type'] = 'local'
+        self.config['db_list'][database_name]['filename'] = file_name
         self.save()
 
-    def save_database_as_mysql(self, username: str, password: str, db_name: str, host: str):
-        if 'db' not in self.config:
-            self.config['db'] = {}
-        self.config['db']['type'] = 'mysql_server'
-        self.config['db']['username'] = username
-        self.config['db']['password'] = password
-        self.config['db']['db_name'] = db_name
-        self.config['db']['db_host'] = host
+    def save_database_as_mysql(self, database_name: str, username: str, password: str, db_name: str, host: str):
+        if 'db_list' not in self.config:
+            self.config['db_list'] = {}
+        if database_name not in self.config['db_list']:
+            self.config['db_list'][database_name] = {}
+        self.config['db_list'][database_name]['type'] = 'mysql_server'
+        self.config['db_list'][database_name]['username'] = username
+        self.config['db_list'][database_name]['password'] = password
+        self.config['db_list'][database_name]['db_name'] = db_name
+        self.config['db_list'][database_name]['db_host'] = host
         self.save()
 
 
 class CLI:
-    cli_revision = '0.2'
+    cli_revision = '0.3'
 
     class _HelperFunctionExitError(Exception):
         pass
 
-    def __init__(self, config: CLIConfig, database_connection):
+    def __init__(self, config: CLIConfig, database_connection: sqlalchemy.future.Engine):
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
+
+        self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red green', 'Return')]))
 
     @staticmethod
     def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
@@ -117,7 +151,7 @@ class CLI:
                 raise self._HelperFunctionExitError()
         return mfr_part_numb.upper()
 
-    def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.GenericItem], title):
+    def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
         ta = rich.table.Table(title=title)
         for spec_db_name in part_db.table_item_display_order:
@@ -180,15 +214,35 @@ class CLI:
             break
         return inp
 
+    @staticmethod
+    def get_autocomplete_list(db_name: str, table_name: str) -> typing.Union[None, list]:
+        autocomplete_choices = None
+        if db_name == 'manufacturer' and table_name == 'ic':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_manufacturers']
+        elif db_name == 'ic_type' and table_name == 'ic':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_types']
+        elif db_name == 'cap_type' and table_name == 'capacitor':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['capacitor_types']
+        elif db_name == 'diode_type' and table_name == 'diode':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['diode_type']
+        return autocomplete_choices
+
     def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
         choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
         specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
+        if specs_selected is None:
+            return
         if len(specs_selected) == 0:
             console.print("[red]Must choose something[/]")
             return
         part_filter = part_db.part_type()
         for spec in specs_selected:
-            inp = self.ask_for_spec_input(spec)
+            autocomplete_choices = self.get_autocomplete_list(spec['db_name'], part_db.table_name)
+            try:
+                inp = self.ask_for_spec_input(spec, autocomplete_choices)
+            except KeyboardInterrupt:
+                console.print("Canceled part lookup")
+                return
             part_filter[spec['db_name']] = inp
         print(part_filter)
         try:
@@ -211,15 +265,7 @@ class CLI:
                 if spec_db_name == 'mfr_part_numb':
                     continue
                 # Select an autocomplete choice, or None if there isn't any
-                autocomplete_choices = None
-                if spec_db_name == 'manufacturer' and part_db.table_name == 'ic':
-                    autocomplete_choices = e7epd.autofill_helpers_list['ic_manufacturers']
-                elif spec_db_name == 'ic_type' and part_db.table_name == 'ic':
-                    autocomplete_choices = e7epd.autofill_helpers_list['ic_types']
-                elif spec_db_name == 'cap_type' and part_db.table_name == 'capacitor':
-                    autocomplete_choices = e7epd.autofill_helpers_list['capacitor_types']
-                elif spec_db_name == 'diode_type' and part_db.table_name == 'diode':
-                    autocomplete_choices = e7epd.autofill_helpers_list['diode_type']
+                autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_db.table_name)
                 # Get the spec
                 spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
                 if spec is None:
@@ -298,10 +344,10 @@ class CLI:
     def component_cli(self, part_db: e7epd.E7EPD.GenericPart):
         """ The CLI handler for components """
         while 1:
-            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Nothing"]).ask()
+            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", self.return_formatted_choice]).ask()
             if to_do is None:
                 raise KeyboardInterrupt()
-            if to_do == "Nothing":
+            if to_do == "Return":
                 break
             elif to_do == "Print parts in DB":
                 if part_db.is_database_empty():
@@ -323,10 +369,10 @@ class CLI:
 
     def choose_component(self):
         while 1:
-            component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + ['Exit']).ask()
+            component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
             if component is None:
                 raise KeyboardInterrupt()
-            elif component == 'Exit':
+            elif component == 'Return':
                 break
 
             part_db = self.db.components[component]
@@ -337,12 +383,37 @@ class CLI:
         if do_delete is True:
             do_delete = questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False).ask()
             if do_delete is True:
-                self.db.wipe_database()
                 console.print("Don't regret this!!!")
+                self.db.wipe_database()
                 return
         if do_delete is not True:
             console.print("Did not delete the database")
             return
+
+    def database_settings(self):
+        while 1:
+            console.print("Current selected database is: %s" % self.conf.get_selected_database())
+            to_do = questionary.select("What do you want to? ", choices=["Add Database", "Select another database", self.return_formatted_choice]).ask()
+            if to_do is None:
+                break
+            if to_do == "Return":
+                break
+            elif to_do == "Add Database":
+                try:
+                    ask_for_database(self.conf)
+                except KeyboardInterrupt:
+                    console.print("Did not add a new database")
+                    continue
+                console.print("Sucessfully added the new database")
+            elif to_do == "Select another database":
+                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
+                if db_name is None:
+                    console.print("Nothing new was selected")
+                    continue
+                self.conf.set_last_db(db_name)
+                console.print("Selected the database %s" % db_name)
+                console.print("[red]Please restart software for it to take into effect[/]")
+                raise KeyboardInterrupt()
 
     def main(self):
         # Check DB version before doing anything
@@ -353,10 +424,10 @@ class CLI:
             else:
                 console.print("[red]You chose to not update the database, thus this CLI application is not usable[/]")
                 return
-        console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision), title_align='center'))
+        console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}\nSelected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
-                to_do = questionary.select("Select the component you want do things with:", choices=['Components', 'Wipe Database', 'Exit']).ask()
+                to_do = questionary.select("Select the component you want do things with:", choices=['Components', 'Wipe Database', 'Database Setting', 'Exit']).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
@@ -365,6 +436,8 @@ class CLI:
                     self.choose_component()
                 elif to_do == 'Wipe Database':
                     self.wipe_database()
+                elif to_do == 'Database Setting':
+                    self.database_settings()
 
         except KeyboardInterrupt:
             pass
@@ -376,34 +449,40 @@ class CLI:
 
 def ask_for_database(config: CLIConfig):
     console.print("Oh no, no database is configured. Let's get that settled")
-    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['Server', 'Local']).ask()
-    # TODO: Once a server option is added to the backend, then enable this
-    # if is_server == 'Server':
-    #     host = questionary.text("What is the database host?").ask()
-    #     db_name = questionary.text("What is the database name").ask()
-    #     username = questionary.text("What is the database username?").ask()
-    #     password = questionary.password("What is the database password?").ask()
-    #     config.save_database_as_mysql(username=username, db_name=db_name, password=password, host=host)
-    # else:
-    #     file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
-    #     config.save_database_as_local(file_name)
-    if is_server == 'Server':
-        console.print("Sorry, but a MySQL server won't be supported until Database Rev0.2")
-        console.print("In the meanwhile, you need to use a local SQLite database")
-    file_name = questionary.text("Please enter the name of the server database file you want to be created").ask()
-    if '.db' not in file_name:
-        file_name += '.db'
-    config.save_database_as_local(file_name)
+    db_id_name = questionary.text("What do you want to call this database").unsafe_ask()
+    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mySQL', 'SQlite']).unsafe_ask()
+    if is_server == 'mySQL':
+        host = questionary.text("What is the database host?").unsafe_ask()
+        db_name = questionary.text("What is the database name").unsafe_ask()
+        username = questionary.text("What is the database username?").unsafe_ask()
+        password = questionary.password("What is the database password?").unsafe_ask()
+        config.save_database_as_mysql(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
+    elif is_server == 'SQlite':
+        file_name = questionary.text("Please enter the name of the server database file you want to be created").unsafe_ask()
+        config.save_database_as_sqlite(db_id_name, file_name)
+        if '.db' not in file_name:
+            file_name += '.db'
+        config.save_database_as_sqlite(db_id_name, file_name)
 
 
 if __name__ == "__main__":
     c = CLIConfig()
+    db_name = None
     while 1:
         try:
-            db_conn = c.get_database_connection()
+            db_conn = c.get_database_connection(db_name)
             break
         except c.NoDatabaseException:
-            ask_for_database(c)
+            try:
+                ask_for_database(c)
+            except KeyboardInterrupt:
+                console.print("No database given. Exiting")
+                sys.exit(-1)
+        except c.NoLastDBSelectionException:
+            db_name = questionary.select("A database was not selected last time. Please select which database to connect to", choices=c.get_stored_db_names()).ask()
+            if db_name is None:
+                console.print("No database is selected to communicate to. Please restart and select something")
+                sys.exit(-1)
 
     c = CLI(config=c, database_connection=db_conn)
     c.main()
