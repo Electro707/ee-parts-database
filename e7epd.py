@@ -233,7 +233,8 @@ class E7EPD:
             # Check if key already exists in table
             for item in self.table_item_spec:
                 if item['required'] is True:
-                    if part_info[item['db_name']] is None:
+                    # if part_info[item['db_name']] is None:
+                    if getattr(part_info, item['db_name']) is None:
                         raise InputException("Did not assign key %s, but it's required" % item['db_name'])
             # If a part is already in a database, then raise an exception
             duplicate_id = self.check_if_already_in_db(part_info)
@@ -307,9 +308,9 @@ class E7EPD:
             for i, item in enumerate(self.table_item_spec):
                 if item['db_name'] not in part_filter.__dict__:
                     continue
-                if part_filter[item['db_name']] is None:
+                if getattr(part_filter, item['db_name']) is None:
                     continue
-                filter_const[item['db_name']] = part_filter[item['db_name']]
+                filter_const[item['db_name']] = getattr(part_filter, item['db_name'])
 
             d = q.filter_by(**filter_const)
             return d
@@ -370,6 +371,33 @@ class E7EPD:
 
             super().__init__(session)
 
+    class MOSFETs(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_mosfet_spec
+            self.table_item_display_order = spec.eedata_mosfet_display_order
+            self.part_type = spec.MOSFET
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class BJTs(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_bjt_spec
+            self.table_item_display_order = spec.eedata_bjt_display_order
+            self.part_type = spec.BJT
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class PCBs(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_pcb_spec
+            self.table_item_display_order = spec.eedata_pcb_display_order
+            self.part_type = spec.PCB
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
         self.db_conn = db_conn
@@ -381,16 +409,23 @@ class E7EPD:
         self.inductors = self.Inductors(sessionmaker(self.db_conn)())
         self.ics = self.ICs(sessionmaker(self.db_conn)())
         self.diodes = self.Diodes(sessionmaker(self.db_conn)())
+        self.mosfets = self.MOSFETs(sessionmaker(self.db_conn)())
+        self.bjts = self.BJTs(sessionmaker(self.db_conn)())
+        self.pcbs = self.PCBs(sessionmaker(self.db_conn)())
 
         self.components = {
             'Resistors': self.resistors,
             'Capacitors': self.capacitors,
             'Inductors': self.inductors,
             'ICs': self.ics,
-            'Diodes': self.diodes
+            'Diodes': self.diodes,
+            'MOSFETs': self.mosfets,
+            'BJTs': self.bjts,
+            'PCBs': self.pcbs,
         }
 
         spec.GenericItem.metadata.create_all(self.db_conn)
+        spec.PCB.metadata.create_all(self.db_conn)
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
@@ -417,15 +452,11 @@ class E7EPD:
         """
             Wipes the component databases
         """
-        spec.GenericItem.metadata.drop_all(self.db_conn)
-        # Recreate table
-        spec.GenericItem.metadata.create_all(self.db_conn)
-
-    @staticmethod
-    def add_column_to_table(engine: sqlalchemy.future.Engine, session: sqlalchemy.orm.Session, column: sqlalchemy.Column, table_name: str):
-        column_name = column.name
-        column_type = column.type.compile(engine.dialect)
-        session.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table_name, column_name, column_type))
+        for c in self.components.values():
+            c.part_type.metadata.drop_all(self.db_conn)
+            c.session.commit()
+            # Recreate table
+            c.part_type.metadata.create_all(self.db_conn)
 
     def update_database(self):
         """
@@ -436,12 +467,13 @@ class E7EPD:
             op = Operations(ctx)
             self.log.info("Backing up database before applying changes")
             self.backup_db()
-            if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3: Add storage to all parts
+            if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3
                 for c in self.components:
                     op.add_column(self.components[c].table_name, Column('storage', String(spec.default_string_len)))
-                    op.add_column(self.components[c].table_name, Column('for_project', String(spec.default_string_len)))
                     op.drop_column(self.components[c].table_name, 'part_comments')
-                    op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments')
+                    op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments', type=sqlalchemy.Text)
+                # Remove the capacitor's power column
+                op.drop_column(self.components['Capacitors'].table_name, 'power')
             self.config.store_db_version()
 
     def is_latest_database(self) -> bool:

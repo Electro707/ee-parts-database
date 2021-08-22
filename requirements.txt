@@ -1,8 +1,6 @@
-rich~=10.7.0
+rich
 engineering_notation
-questionary~=1.10.0
-mysql-connector-python
-SQLAlchemy~=1.4.22
-requests~=2.26.0
-PySide6~=6.1.2
-alembic~=1.6.5
+questionary
+SQLAlchemy
+alembic
+requests

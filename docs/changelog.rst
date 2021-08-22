@@ -14,10 +14,12 @@ E7EPD Database Specification
 * v0.2:
     * Added Inductor table
     * Added Diode table
-* v0.3 (In Progress):
+* v0.3 (In Progress, unreleased):
     * Added a ``storage`` key to all parts
-    * Added a ``for_project`` key to all parts
     * Merged ``user_comments`` and ``part_comments`` to just one ``comments`` column
+    * Removed ``power`` for the capacitor table
+    * Updated type of the ``comments`` column to ``TEXT``
+    * Added a spec for crystals, MOSFETs, and BJTs
 
 Database Python DB Wrapper
 --------------------------------------------
@@ -32,11 +34,14 @@ Database Python DB Wrapper
     * Added ```wipe_database``` function
     * Added a way for the backend to store configurations about itself
     * Added a key to check the database specification the database is under and the ``E7EPD`` class
-* v0.3:
+* v0.3 (In Progress, unreleased):
     * Switched to sqlalchemy for handing SQL
     * As the wrapper input includes a sqlalchemy engine, any sql type that sqlalchemy supports should be supported
     * Updated spec for Database Rev 0.3
     * Added the first migration from Database Rev 0.2 to 0.3 with ``alembic``
+    * Added a ``PCB`` class from database spec
+    * Added autofill helpers for the new MOSFET and BJT component types
+    * Re-factored backend spec and display_as lists
 
 CLI
 -----------
@@ -51,7 +56,7 @@ CLI
     * Added option to remove and append stock to a part
     * Moved around options so that there is an "initial screen" before choosing components
     * Added a check for the database revision on startup
-* v0.3 (In Progress)
+* v0.3 (In Progress, unreleased)
     * Updated for the new Wrapper 0.3 database argument
     * Allowing option for a mySQL database
     * Allowing option to add multiple databases

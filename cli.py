@@ -159,14 +159,15 @@ class CLI:
         for part in parts_list:
             row = []
             for spec_db_name in part_db.table_item_display_order:
-                to_display = part[spec_db_name]
+                to_display = getattr(part, spec_db_name)
                 display_as = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)['shows_as']
-                if display_as == 'engineering':
-                    to_display = str(EngNumber(to_display))
-                elif display_as == 'percentage':
-                    to_display = str(to_display) + "%"
-                else:
-                    to_display = str(to_display)
+                if to_display is not None:
+                    if display_as == 'engineering':
+                        to_display = str(EngNumber(to_display))
+                    elif display_as == 'percentage':
+                        to_display = str(to_display) + "%"
+                    else:
+                        to_display = str(to_display)
                 row.append(to_display)
             ta.add_row(*row)
         console.print(ta)
@@ -207,10 +208,14 @@ class CLI:
                     inp = inp.split('/')
                     inp = float(inp[0]) / float(inp[1])
 
-                if "INT" in spec['db_type']:
-                    inp = int(inp)
-                elif "FLOAT" in spec['db_type']:
-                    inp = float(inp)
+                try:
+                    if spec['input_type'] == 'int':
+                        inp = int(inp)
+                    elif spec['input_type'] == 'float':
+                        inp = float(inp)
+                except ValueError:
+                    console.print("Inputted value is not a %s" % spec['input_type'])
+                    continue
             break
         return inp
 
@@ -225,6 +230,10 @@ class CLI:
             autocomplete_choices = e7epd.spec.autofill_helpers_list['capacitor_types']
         elif db_name == 'diode_type' and table_name == 'diode':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['diode_type']
+        elif db_name == 'bjt_type' and table_name == 'bjt':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['bjt_types']
+        elif db_name == 'mosfet_type' and table_name == 'mosfet':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['mosfet_types']
         return autocomplete_choices
 
     def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
@@ -243,8 +252,7 @@ class CLI:
             except KeyboardInterrupt:
                 console.print("Canceled part lookup")
                 return
-            part_filter[spec['db_name']] = inp
-        print(part_filter)
+            setattr(part_filter, spec['db_name'], inp)
         try:
             parts_list = part_db.get_sorted_parts(part_filter)
         except e7epd.EmptyInDatabase:
@@ -255,11 +263,14 @@ class CLI:
     def add_new_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ Function gets called when a part is to be added """
         try:
-            try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=False)
-            except self._HelperFunctionExitError:
-                return
-            new_part = part_db.part_type(mfr_part_numb=mfr_part_numb)
+            if 'mfr_part_numb' in part_db.table_item_display_order:
+                try:
+                    mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=False)
+                except self._HelperFunctionExitError:
+                    return
+                new_part = part_db.part_type(mfr_part_numb=mfr_part_numb)
+            else:
+                new_part = part_db.part_type()
             for spec_db_name in part_db.table_item_display_order:
                 # Skip over the manufacturer part number as we already have that
                 if spec_db_name == 'mfr_part_numb':
@@ -273,7 +284,7 @@ class CLI:
                     return
                 # Ask the suer for that property
                 try:
-                    new_part[spec_db_name] = self.ask_for_spec_input(spec, autocomplete_choices)
+                    setattr(new_part, spec_db_name, self.ask_for_spec_input(spec, autocomplete_choices))
                 except KeyboardInterrupt:
                     console.print("Did not add part")
                     return
