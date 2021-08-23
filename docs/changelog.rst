@@ -19,7 +19,7 @@ E7EPD Database Specification
     * Merged ``user_comments`` and ``part_comments`` to just one ``comments`` column
     * Removed ``power`` for the capacitor table
     * Updated type of the ``comments`` column to ``TEXT``
-    * Added a spec for 
+    * Added a spec for
         * Crystals
         * MOSFETs
         * BJTs
@@ -45,8 +45,8 @@ Database Python DB Wrapper
     * As the wrapper input includes a sqlalchemy engine, any sql type that sqlalchemy supports should be supported
     * Updated spec for Database Rev 0.3
     * Added the first migration from Database Rev 0.2 to 0.3 with ``alembic``
-    * Added a ``PCB`` class from database spec
-    * Added autofill helpers for the new MOSFET and BJT component types
+    * Added a ``PCB`` class from database spec (didn't for 0.2)
+    * Added autofill helpers for the new component types
     * Re-factored backend spec and display_as lists
 
 CLI
@@ -67,3 +67,8 @@ CLI
     * Allowing option for a mySQL database
     * Allowing option to add multiple databases
     * Allowing option to select which database to connect to
+
+
+* TODOs:
+    * Add option to edit a component's properties.
+    * Add option to import BOM file/CSV file
