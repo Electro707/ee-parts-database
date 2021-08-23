@@ -35,6 +35,7 @@ comments      TEXT                                  Comments about the part
 Resistor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``resistance``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -47,6 +48,7 @@ power         FLOAT                                 The resistor's power rating 
 Capacitor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``capacitor``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -61,6 +63,7 @@ cap_type      VARCHAR                               The capacitor types, which s
 Inductor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``inductor``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -73,6 +76,7 @@ max_current   FLOAT                                 The inductor's maximum curre
 Diode Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``diode``
 
 ================= ========================= =========== =======================================================
 Name              SQL Type                  Required?   Description
@@ -86,6 +90,7 @@ max_rv            FLOAT                                 Max reverse voltage
 IC Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``ic``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -96,6 +101,7 @@ ic_type       VARCHAR                   YES         The IC type, for example mic
 Crystal Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``crystal``
 
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
@@ -109,6 +115,7 @@ stability_ppm   FLOAT                                   The stability (in ppm) o
 MOSFET Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``mosfet``
 
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
@@ -124,6 +131,7 @@ i_d_pulse       FLOAT                                   The max pulsed/peak drai
 BJT Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
+Table Name: ``bjt``
 
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
@@ -136,8 +144,48 @@ i_c             FLOAT                                   The max continuous colle
 i_c_peak        FLOAT                                   The max pulsed/peak collector current of the BJT
 =============== =========================== =========== =======================================================
 
+Connector Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+Table Name: ``connector``
+
+============= ========================= =========== =======================================================
+Name          SQL Type                  Required?   Description
+============= ========================= =========== =======================================================
+conn_type     VARCHAR                   YES         The connector type (Banana, Rect. Header, Test point, etc)
+============= ========================= =========== =======================================================
+
+LED Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+Table Name: ``led``
+
+============= ========================= =========== =======================================================
+Name          SQL Type                  Required?   Description
+============= ========================= =========== =======================================================
+led_type      VARCHAR                   YES         The LED's color (Red, Blue, RGB, etc)
+vf            FLOAT                                 The LED's forward voltage
+max_i         FLOAT                                 The LED's maximum forward current
+============= ========================= =========== =======================================================
+
+Fuse Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+Table Name: ``fuse``
+
+============= ========================= =========== =======================================================
+Name          SQL Type                  Required?   Description
+============= ========================= =========== =======================================================
+fuse_type     VARCHAR                   YES         The fuse type (Glass, PTC, etc)
+max_v         FLOAT                                 The fuse's max voltage
+max_i         FLOAT                                 The fuse's absolute maximum current
+trip_i        FLOAT                                 The fuse's trip current
+hold_i        FLOAT                                 The fuse's hold current
+============= ========================= =========== =======================================================
+
 PCBs Table
 ---------------------------------
+Table Name: ``pcb``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
@@ -145,7 +193,7 @@ id            INTEGER PRIMARY KEY       YES         Each row in the database wil
 stock         INT                       YES         The number of parts in stock
 rev           VARCHAR                   YES         The project's revision
 sub_rev       VARCHAR                               The project's sub-revision
-project_name  VARCHAR                   YES         The project name related to this part. The project should match that of the Projects database (upcoming in Rev 0.2)
+project_name  VARCHAR                   YES         The project name related to this part. The project should match that of the Projects database (upcoming in future rev)
 comments      TEXT                                  Comments about the part
 ============= ========================= =========== =======================================================
 

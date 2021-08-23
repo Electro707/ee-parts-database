@@ -149,6 +149,7 @@ class CLI:
             if (must_exit and exist_in_db is None) or (not must_exit and exist_in_db is not None):
                 console.print("[red]Part must already exist in the database[/]")
                 raise self._HelperFunctionExitError()
+        mfr_part_numb = mfr_part_numb.strip()
         return mfr_part_numb.upper()
 
     def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
@@ -204,7 +205,7 @@ class CLI:
                 elif spec['shows_as'] == 'percentage':
                     if '%' in inp:
                         inp = inp.replace('%', '')
-                elif '/' in inp:
+                elif '/' in inp and spec['input_type'] == 'float':
                     inp = inp.split('/')
                     inp = float(inp[0]) / float(inp[1])
 
@@ -234,6 +235,15 @@ class CLI:
             autocomplete_choices = e7epd.spec.autofill_helpers_list['bjt_types']
         elif db_name == 'mosfet_type' and table_name == 'mosfet':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['mosfet_types']
+        elif db_name == 'led_type' and table_name == 'led':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['led_types']
+        elif db_name == 'fuse_type' and table_name == 'fuse':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['fuse_types']
+        # Package Auto-Helpers
+        elif db_name == 'package' and table_name == 'ic':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_packages']
+        elif db_name == 'package' and (table_name == 'resistance' or table_name == 'capacitor' or table_name == 'inductor'):
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_packages']
         return autocomplete_choices
 
     def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
@@ -390,9 +400,9 @@ class CLI:
             self.component_cli(part_db)
 
     def wipe_database(self):
-        do_delete = questionary.confirm("ARE YOYU SURE???", auto_enter=False).ask()
+        do_delete = questionary.confirm("ARE YOYU SURE???", auto_enter=False, default=False).ask()
         if do_delete is True:
-            do_delete = questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False).ask()
+            do_delete = questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False, default=False).ask()
             if do_delete is True:
                 console.print("Don't regret this!!!")
                 self.db.wipe_database()

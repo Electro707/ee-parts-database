@@ -19,7 +19,13 @@ E7EPD Database Specification
     * Merged ``user_comments`` and ``part_comments`` to just one ``comments`` column
     * Removed ``power`` for the capacitor table
     * Updated type of the ``comments`` column to ``TEXT``
-    * Added a spec for crystals, MOSFETs, and BJTs
+    * Added a spec for 
+        * Crystals
+        * MOSFETs
+        * BJTs
+        * Connectors
+        * LEDs
+        * Fuses
 
 Database Python DB Wrapper
 --------------------------------------------

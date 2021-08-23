@@ -98,6 +98,27 @@ eedata_bjt_spec = eedata_generic_spec + [
 ]
 eedata_bjt_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'bjt_type', 'vcbo', 'vceo', 'vebo', 'i_c', 'i_c_peak', 'package', 'storage', 'comments']
 
+eedata_connector_spec = eedata_generic_spec + [
+    {'db_name': 'conn_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+]
+eedata_connector_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'conn_type', 'package', 'storage', 'comments']
+
+eedata_led_spec = eedata_generic_spec + [
+    {'db_name': 'led_type', 'showcase_name': 'LED Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+    {'db_name': 'vf', 'showcase_name': 'LED forward voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+    {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+]
+eedata_led_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'led_type', 'vf', 'max_i', 'package', 'storage', 'comments']
+
+eedata_fuse_spec = eedata_generic_spec + [
+    {'db_name': 'fuse_type', 'showcase_name': 'Fuse Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+    {'db_name': 'max_v', 'showcase_name': 'Fuse Max Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+    {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+    {'db_name': 'trip_i', 'showcase_name': 'Trip Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+    {'db_name': 'hold_i', 'showcase_name': 'Hold Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+]
+eedata_fuse_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i', 'package', 'storage', 'comments']
+
 eedata_pcb_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
     {'db_name': 'rev', 'showcase_name': 'Revision', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
@@ -181,6 +202,30 @@ class BJT(GenericItem):
     i_c_peak = Column(Float)
 
 
+class LED(GenericItem):
+    __tablename__ = 'led'
+
+    led_type = Column(String(default_string_len), nullable=False)
+    vf = Column(Float)
+    max_i = Column(Float)
+
+
+class Fuse(GenericItem):
+    __tablename__ = 'fuse'
+
+    fuse_type = Column(String(default_string_len), nullable=False)
+    max_v = Column(Float)
+    max_i = Column(Float)
+    trip_i = Column(Float)
+    hold_i = Column(Float)
+
+
+class Connector(GenericItem):
+    __tablename__ = 'connector'
+
+    conn_type = Column(String(default_string_len), nullable=False)
+
+
 class PCB(_AlchemyDeclarativeBase):
     __tablename__ = 'pcb'
 
@@ -209,6 +254,8 @@ autofill_helpers_list = {
                     'SOIC-8, SIOC-14, SOIC-16, SOIC-18'],
     'mosfet_types': ['N-Channel', 'P-Channel'],
     'bjt_types': ['NPN', 'PNP'],
+    'fuse_types': ['PTC', 'Fast Blow', 'Slow Blow'],
+    'led_types': ['Red', 'Green', 'Blue', 'RGB', 'Addressable']
 }
 
 
@@ -230,7 +277,10 @@ if __name__ == '__main__':
                          ['pcb', eedata_pcb_spec, eedata_pcb_display_order, PCB],
                          ['crystal', eedata_crystal_spec, eedata_crystal_display_order, Crystal],
                          ['mosfet', eedata_mosfet_spec, eedata_mosfet_display_order, MOSFET],
-                         ['bjt', eedata_bjt_spec, eedata_bjt_display_order, BJT]]
+                         ['bjt', eedata_bjt_spec, eedata_bjt_display_order, BJT],
+                         ['connectors', eedata_connector_spec, eedata_connector_display_order, Connector],
+                         ['led', eedata_led_spec, eedata_led_display_order, LED],
+                         ['fuse', eedata_fuse_spec, eedata_fuse_display_order, Fuse]]
     for spec in spec_and_disp_arr:
         for i in spec[1]:
             if i['db_name'] not in spec[2]:
@@ -238,3 +288,4 @@ if __name__ == '__main__':
 
             if not hasattr(spec[3], i['db_name']):
                 raise AssertionError("Extra name in spec dict for {} = {}".format(spec[0], i['db_name']))
+    print("Done with test")

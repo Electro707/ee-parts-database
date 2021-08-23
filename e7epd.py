@@ -371,6 +371,15 @@ class E7EPD:
 
             super().__init__(session)
 
+    class Crystals(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_crystal_spec
+            self.table_item_display_order = spec.eedata_crystal_display_order
+            self.part_type = spec.Crystal
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
     class MOSFETs(GenericPart):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_mosfet_spec
@@ -398,6 +407,33 @@ class E7EPD:
 
             super().__init__(session)
 
+    class Connectors(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_connector_spec
+            self.table_item_display_order = spec.eedata_connector_display_order
+            self.part_type = spec.Connector
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class LEDs(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_led_spec
+            self.table_item_display_order = spec.eedata_led_display_order
+            self.part_type = spec.LED
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class Fuses(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_fuse_spec
+            self.table_item_display_order = spec.eedata_fuse_display_order
+            self.part_type = spec.Fuse
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
         self.db_conn = db_conn
@@ -409,8 +445,12 @@ class E7EPD:
         self.inductors = self.Inductors(sessionmaker(self.db_conn)())
         self.ics = self.ICs(sessionmaker(self.db_conn)())
         self.diodes = self.Diodes(sessionmaker(self.db_conn)())
+        self.crystals = self.Crystals(sessionmaker(self.db_conn)())
         self.mosfets = self.MOSFETs(sessionmaker(self.db_conn)())
         self.bjts = self.BJTs(sessionmaker(self.db_conn)())
+        self.connectors = self.Connectors(sessionmaker(self.db_conn)())
+        self.leds = self.LEDs(sessionmaker(self.db_conn)())
+        self.fuses = self.Fuses(sessionmaker(self.db_conn)())
         self.pcbs = self.PCBs(sessionmaker(self.db_conn)())
 
         self.components = {
@@ -419,8 +459,12 @@ class E7EPD:
             'Inductors': self.inductors,
             'ICs': self.ics,
             'Diodes': self.diodes,
+            'Crystals': self.crystals,
             'MOSFETs': self.mosfets,
             'BJTs': self.bjts,
+            'Connectors': self.connectors,
+            'LEDs': self.leds,
+            'Fuses': self.fuses,
             'PCBs': self.pcbs,
         }
 
