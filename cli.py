@@ -270,8 +270,10 @@ class CLI:
             return
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
-    def add_new_part(self, part_db: e7epd.E7EPD.GenericPart):
+    def add_new_part(self, part_db: e7epd.E7EPD.GenericPart = None):
         """ Function gets called when a part is to be added """
+        if part_db is None:
+            part_db = self.choose_component()
         try:
             if 'mfr_part_numb' in part_db.table_item_display_order:
                 try:
@@ -389,15 +391,11 @@ class CLI:
                 self.remove_stock_from_part(part_db)
 
     def choose_component(self):
-        while 1:
-            component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
-            if component is None:
-                raise KeyboardInterrupt()
-            elif component == 'Return':
-                break
-
-            part_db = self.db.components[component]
-            self.component_cli(part_db)
+        component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
+        if component is None or component == 'Return':
+            raise KeyboardInterrupt()
+        part_db = self.db.components[component]
+        return part_db
 
     def wipe_database(self):
         do_delete = questionary.confirm("ARE YOYU SURE???", auto_enter=False, default=False).ask()
@@ -448,13 +446,23 @@ class CLI:
         console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}\nSelected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
-                to_do = questionary.select("Select the component you want do things with:", choices=['Components', 'Wipe Database', 'Database Setting', 'Exit']).ask()
+                to_do = questionary.select("Select the component you want do things with:", choices=['Add new part', 'Individual Components View', 'Wipe Database', 'Database Setting', 'Exit']).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
                     break
-                elif to_do == 'Components':
-                    self.choose_component()
+                elif to_do == 'Add new part':
+                    try:
+                        self.add_new_part()
+                    except KeyboardInterrupt:
+                        continue
+                elif to_do == 'Individual Components View':
+                    while 1:
+                        try:
+                            part_db = self.choose_component()
+                            self.component_cli(part_db)
+                        except KeyboardInterrupt:
+                            break
                 elif to_do == 'Wipe Database':
                     self.wipe_database()
                 elif to_do == 'Database Setting':

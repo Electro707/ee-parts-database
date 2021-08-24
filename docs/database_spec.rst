@@ -183,6 +183,25 @@ trip_i        FLOAT                                 The fuse's trip current
 hold_i        FLOAT                                 The fuse's hold current
 ============= ========================= =========== =======================================================
 
+Button/Switch Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Append the *GenericPart* Table to this table.
+Table Name: ``button``
+
+============= ========================= =========== =======================================================
+Name          SQL Type                  Required?   Description
+============= ========================= =========== =======================================================
+bt_type       VARCHAR                   YES         The button/switch type (Tactile, Rocker, etc)
+circuit_t     VARCHAR                               The button/switch's configuration (SPDT, SPST-NO, etc)
+max_v         FLOAT                                 The button/switch's max voltage
+max_i         FLOAT                                 The button/switch's absolute maximum current
+============= ========================= =========== =======================================================
+
+Misc Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This table is exactly the same as the *GenericPart* Table.
+Table Name: ``misc_c``
+
 PCBs Table
 ---------------------------------
 Table Name: ``pcb``

@@ -30,8 +30,8 @@ eedata_generic_spec = [
     {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
     {'db_name': 'manufacturer', 'showcase_name': 'Manufacturer', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'package', 'showcase_name': 'Package', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'int', 'required': False, },
-    {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'int', 'required': False, },
+    {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
+    {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
 ]
 
 eedata_resistors_spec = eedata_generic_spec + [
@@ -118,6 +118,17 @@ eedata_fuse_spec = eedata_generic_spec + [
     {'db_name': 'hold_i', 'showcase_name': 'Hold Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
 eedata_fuse_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i', 'package', 'storage', 'comments']
+
+eedata_button_spec = eedata_generic_spec + [
+    {'db_name': 'bt_type', 'showcase_name': 'Button Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
+    {'db_name': 'circuit_t', 'showcase_name': 'Button Circuit', 'shows_as': 'normal', 'input_type': 'str', 'required': False},
+    {'db_name': 'max_v', 'showcase_name': 'Voltage Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+    {'db_name': 'max_i', 'showcase_name': 'Current Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+]
+eedata_button_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'bt_type', 'circuit_t', 'max_v', 'max_i', 'package', 'storage', 'comments']
+
+eedata_misc_spec = eedata_generic_spec
+eedata_misc_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'package', 'storage', 'comments']
 
 eedata_pcb_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
@@ -226,6 +237,19 @@ class Connector(GenericItem):
     conn_type = Column(String(default_string_len), nullable=False)
 
 
+class Button(GenericItem):
+    __tablename__ = 'button'
+
+    bt_type = Column(String(default_string_len), nullable=False)
+    circuit_t = Column(String(default_string_len))
+    max_v = Column(Float)
+    max_i = Column(Float)
+
+
+class MiscComp(GenericItem):
+    __tablename__ = 'misc_c'
+
+
 class PCB(_AlchemyDeclarativeBase):
     __tablename__ = 'pcb'
 
@@ -280,7 +304,9 @@ if __name__ == '__main__':
                          ['bjt', eedata_bjt_spec, eedata_bjt_display_order, BJT],
                          ['connectors', eedata_connector_spec, eedata_connector_display_order, Connector],
                          ['led', eedata_led_spec, eedata_led_display_order, LED],
-                         ['fuse', eedata_fuse_spec, eedata_fuse_display_order, Fuse]]
+                         ['fuse', eedata_fuse_spec, eedata_fuse_display_order, Fuse],
+                         ['button', eedata_button_spec, eedata_button_display_order, Button],
+                         ['misc', eedata_misc_spec, eedata_misc_display_order, MiscComp]]
     for spec in spec_and_disp_arr:
         for i in spec[1]:
             if i['db_name'] not in spec[2]:

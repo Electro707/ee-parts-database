@@ -26,6 +26,11 @@ E7EPD Database Specification
         * Connectors
         * LEDs
         * Fuses
+        * Switches/Buttons
+        * Misc/Others
+
+* TODOs:
+    * Add datasheet column
 
 Database Python DB Wrapper
 --------------------------------------------
@@ -67,7 +72,6 @@ CLI
     * Allowing option for a mySQL database
     * Allowing option to add multiple databases
     * Allowing option to select which database to connect to
-
 
 * TODOs:
     * Add option to edit a component's properties.

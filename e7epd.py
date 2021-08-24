@@ -434,6 +434,24 @@ class E7EPD:
 
             super().__init__(session)
 
+    class Buttons(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_button_spec
+            self.table_item_display_order = spec.eedata_button_display_order
+            self.part_type = spec.Button
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class MiscComps(GenericPart):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_misc_spec
+            self.table_item_display_order = spec.eedata_misc_display_order
+            self.part_type = spec.MiscComp
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
         self.db_conn = db_conn
@@ -451,6 +469,8 @@ class E7EPD:
         self.connectors = self.Connectors(sessionmaker(self.db_conn)())
         self.leds = self.LEDs(sessionmaker(self.db_conn)())
         self.fuses = self.Fuses(sessionmaker(self.db_conn)())
+        self.buttons = self.Buttons(sessionmaker(self.db_conn)())
+        self.misc_cs = self.MiscComps(sessionmaker(self.db_conn)())
         self.pcbs = self.PCBs(sessionmaker(self.db_conn)())
 
         self.components = {
@@ -465,6 +485,8 @@ class E7EPD:
             'Connectors': self.connectors,
             'LEDs': self.leds,
             'Fuses': self.fuses,
+            'Buttons': self.buttons,
+            'Misc': self.misc_cs,
             'PCBs': self.pcbs,
         }
 
