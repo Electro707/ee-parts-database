@@ -22,7 +22,7 @@ As of Rev 0.3, this project uses sqlAlchemy, without directly creating SQL comma
 secure than previous revisions.
 
 ## Docs
-The documentation for this project can be found in [the project's readthedocs](https://e7epd.readthedocs.io/en/).
+The documentation for this project can be found in [the project's readthedocs](https://e7epd.readthedocs.io/).
 
 The documentation is for the lastest released version. For the non-released master docs, see [here](https://e7epd.readthedocs.io/en/latest/).
 
