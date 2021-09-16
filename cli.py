@@ -107,7 +107,7 @@ class CLIConfig:
 
 
 class CLI:
-    cli_revision = '0.3'
+    cli_revision = '0.4pre'
 
     class _HelperFunctionExitError(Exception):
         pass
@@ -130,9 +130,9 @@ class CLI:
             if spec['db_name'] == db_name:
                 return spec
 
-    def _ask_manufacturer_part_number(self, part_db: e7epd.E7EPD.GenericPart, must_exit: typing.Union[None, bool] = None) -> str:
+    def _ask_manufacturer_part_number(self, part_db: e7epd.E7EPD.GenericPart, must_already_exist: bool = None) -> str:
         # Get a list of manufacturer part number to use as type hinting
-        if must_exit is True:
+        if must_already_exist is not None:
             try:
                 mfr_list = part_db.get_all_mfr_part_numb_in_db()
             except e7epd.EmptyInDatabase:
@@ -144,10 +144,13 @@ class CLI:
         if mfr_part_numb == '' or mfr_part_numb is None:
             console.print("[red]Must have a manufacturer part number[/]")
             raise self._HelperFunctionExitError()
-        if must_exit is not None:
-            exist_in_db = part_db.check_if_already_in_db_by_manuf(mfr_part_numb)
-            if (must_exit and exist_in_db is None) or (not must_exit and exist_in_db is not None):
+        if must_already_exist is True:
+            if mfr_part_numb not in mfr_list:
                 console.print("[red]Part must already exist in the database[/]")
+                raise self._HelperFunctionExitError()
+        elif must_already_exist is False:
+            if mfr_part_numb in mfr_list:
+                console.print("[red]Part must not already exist in the database, which it does![/]")
                 raise self._HelperFunctionExitError()
         mfr_part_numb = mfr_part_numb.strip()
         return mfr_part_numb.upper()
@@ -277,7 +280,7 @@ class CLI:
         try:
             if 'mfr_part_numb' in part_db.table_item_display_order:
                 try:
-                    mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=False)
+                    mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=False)
                 except self._HelperFunctionExitError:
                     return
                 new_part = part_db.part_type(mfr_part_numb=mfr_part_numb)
@@ -309,7 +312,7 @@ class CLI:
     def delete_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ This gets called when a part is to be deleted """
         try:
-            mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=True)
+            mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
         except self._HelperFunctionExitError:
             return
         try:
@@ -317,11 +320,13 @@ class CLI:
         except e7epd.EmptyInDatabase:
             console.print("[red]The manufacturer is not in the database[/]")
 
-    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart):
+    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None):
+        if part_db is None:
+            part_db = self.choose_component()
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=True)
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
             except self._HelperFunctionExitError:
                 return
             while 1:
@@ -338,15 +343,17 @@ class CLI:
             console.print("\nOk, no stock is changed")
             return
 
-    def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericPart):
+    def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericPart = None):
+        if part_db is None:
+            part_db = self.choose_component()
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_exit=True)
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
             except self._HelperFunctionExitError:
                 return
             while 1:
-                remove_by = questionary.text("Enter how much you want to add this part by: ").ask()
+                remove_by = questionary.text("Enter how many components to remove from this part?: ").ask()
                 try:
                     remove_by = int(remove_by)
                 except ValueError:
@@ -412,7 +419,7 @@ class CLI:
     def database_settings(self):
         while 1:
             console.print("Current selected database is: %s" % self.conf.get_selected_database())
-            to_do = questionary.select("What do you want to? ", choices=["Add Database", "Select another database", self.return_formatted_choice]).ask()
+            to_do = questionary.select("What do you want to? ", choices=["Add Database", "Wipe Database", "Select another database", self.return_formatted_choice]).ask()
             if to_do is None:
                 break
             if to_do == "Return":
@@ -423,7 +430,9 @@ class CLI:
                 except KeyboardInterrupt:
                     console.print("Did not add a new database")
                     continue
-                console.print("Sucessfully added the new database")
+                console.print("Successfully added the new database")
+            elif to_do == 'Wipe Database':
+                self.wipe_database()
             elif to_do == "Select another database":
                 db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
                 if db_name is None:
@@ -446,7 +455,9 @@ class CLI:
         console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}\nSelected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
-                to_do = questionary.select("Select the component you want do things with:", choices=['Add new part', 'Individual Components View', 'Wipe Database', 'Database Setting', 'Exit']).ask()
+                to_do = questionary.select("Select the component you want do things with:",
+                                           choices=['Add new part', 'Add new stock', 'Remove stock', 'Individual Components View',
+                                                    'Database Setting', 'Exit']).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
@@ -456,6 +467,16 @@ class CLI:
                         self.add_new_part()
                     except KeyboardInterrupt:
                         continue
+                elif to_do == 'Add new stock':
+                    try:
+                        self.add_stock_to_part()
+                    except KeyboardInterrupt:
+                        continue
+                elif to_do == 'Remove stock':
+                    try:
+                        self.remove_stock_from_part()
+                    except KeyboardInterrupt:
+                        continue
                 elif to_do == 'Individual Components View':
                     while 1:
                         try:
@@ -463,8 +484,6 @@ class CLI:
                             self.component_cli(part_db)
                         except KeyboardInterrupt:
                             break
-                elif to_do == 'Wipe Database':
-                    self.wipe_database()
                 elif to_do == 'Database Setting':
                     self.database_settings()
 

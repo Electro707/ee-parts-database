@@ -20,6 +20,7 @@ there, I wasn't satisfied with them.
 ## Security:
 As of Rev 0.3, this project uses sqlAlchemy, without directly creating SQL commands like before. This should make it more
 secure than previous revisions.
+#### NOTICE: The password for a mySQL user is stored in a json file in plain format. Make sure the mySQL account only has permission to the parts' database.
 
 ## Docs
 The documentation for this project can be found in [the project's readthedocs](https://e7epd.readthedocs.io/).

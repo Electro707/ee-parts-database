@@ -14,7 +14,7 @@ import typing
 import e707pd_spec as spec
 
 # Version of this backend
-__version__ = '0.3'
+__version__ = '0.4pre'
 # Version of the database spec
 database_spec_rev = '0.3'
 
@@ -197,7 +197,7 @@ class E7EPD:
                 return d[0]
             else:
                 # TODO: Add exception, as having more than 1 of the same ID is impossible
-                pass
+                raise UserWarning()
 
         def update_part(self, part_info: spec.GenericItem):
             """
@@ -274,9 +274,9 @@ class E7EPD:
                 EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
             """
             part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+            if part.stock - remove_by < 0:
+                raise NegativeStock(part.stock)
             part.stock -= remove_by
-            if part.stock < 0:
-                raise NegativeStock(part.stock+remove_by)
             self.session.commit()
 
         def get_all_parts(self) -> typing.List[spec.GenericItem]:
