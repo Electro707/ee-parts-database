@@ -9,3 +9,6 @@ __pycache__
 *.json
 # Sphinx Build files
 _build
+
+# My fork of the digikey API, used for some optional features
+e707-digikey-api

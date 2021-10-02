@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import subprocess
 
 import e7epd
 import logging
@@ -116,7 +117,24 @@ class CLI:
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
+        self.is_digikey_available = self.check_if_digikey_api_folder()
+
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red green', 'Return')]))
+
+    @staticmethod
+    def check_if_digikey_api_folder():
+        if os.path.isdir('e707-digikey-api'):
+            return True
+        return False
+
+    def checkout_digikey_api_fork(self):
+        s = subprocess.run(['git', 'clone', 'https://github.com/Electro707/digikey-api.git', 'e707-digikey-api', '-b', 'e707_fork'])
+        if s.returncode != 0:
+            console.print(['[red]Did not sucessfully checkout E707\'s fork of the Digikey API'])
+            console.print(s.stdout)
+            return
+        console.print('Checkout E707\'s fork of the Digikey API')
+        self.is_digikey_available = True
 
     @staticmethod
     def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
