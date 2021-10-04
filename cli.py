@@ -1,8 +1,12 @@
 #!/usr/bin/python3
+"""
+    E707PD Python CLI Application
+    Rev 0.4pre
+"""
+# External Modules Import
 import subprocess
-
-import e7epd
 import logging
+import importlib
 import rich
 import rich.console
 import rich.panel
@@ -14,13 +18,22 @@ from engineering_notation import EngNumber
 import questionary
 import prompt_toolkit
 import prompt_toolkit.formatted_text
-import pathlib
 import os
 import sys
 import typing
 import json
 import sqlalchemy
 import sqlalchemy.future
+import sqlalchemy.orm
+# Local Modules Import
+import e7epd
+try:
+    from e707_digikey_api.digikey.v3.api import DigikeyAPI
+except ImportError:
+    digikey_api_en = False
+else:
+    digikey_api_en = True
+
 
 l = logging.getLogger()
 l.setLevel(logging.WARNING)
@@ -107,6 +120,47 @@ class CLIConfig:
         self.save()
 
 
+class DKApiSQLConfig:
+    _Base = sqlalchemy.orm.declarative_base()
+
+    class _DKConf(_Base):
+        __tablename__ = 'e7epd_pycli_config'
+        id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+        d_key = sqlalchemy.Column(sqlalchemy.String(50))
+        d_val = sqlalchemy.Column(sqlalchemy.String(50))
+
+    def __init__(self, session: sqlalchemy.orm.Session, engine: sqlalchemy.future.Engine):
+        super().__init__()
+        self.log = logging.getLogger('DigikeyAPIConfig')
+        self.session = session
+        self._DKConf.metadata.create_all(engine)
+
+    def set(self, key: str, val: str):
+        d = self.session.query(self._DKConf).filter_by(d_key=key).all()
+        if len(d) == 0:
+            p = self._DKConf(d_key=key, d_val=val)
+            self.session.add(p)
+            self.log.debug('Inserted key-value pair: {}={}'.format(key, val))
+        elif len(d) == 1:
+            d[0].d_val = val
+            self.log.debug('Updated key {} with value {}'.format(key, val))
+        else:
+            raise UserWarning("There isn't supposed to be more than 1 key")
+        self.session.commit()
+
+    def get(self, key: str):
+        d = self.session.query(self._DKConf).filter_by(d_key=key).all()
+        if len(d) == 0:
+            return None
+        elif len(d) == 1:
+            return d[0].d_val
+        else:
+            raise UserWarning("There isn't supposed to be more than 1 key")
+
+    def save(self):
+        self.session.commit()
+
+
 class CLI:
     cli_revision = '0.4pre'
 
@@ -114,27 +168,55 @@ class CLI:
         pass
 
     def __init__(self, config: CLIConfig, database_connection: sqlalchemy.future.Engine):
+        self.db_engine = database_connection
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
-        self.is_digikey_available = self.check_if_digikey_api_folder()
+        self.is_digikey_available = digikey_api_en
+        self.digikey_api = None
+        self.digikey_api_conf = None
+
+        if self.is_digikey_available:
+            self.digikey_api_setup()
 
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red green', 'Return')]))
 
     @staticmethod
     def check_if_digikey_api_folder():
-        if os.path.isdir('e707-digikey-api'):
+        if os.path.isdir('e707_digikey_api'):
             return True
         return False
 
+    def digikey_api_setup(self):
+        self.digikey_api_conf = DKApiSQLConfig(sqlalchemy.orm.sessionmaker(self.db_engine)(), self.db_engine)
+        self.digikey_api = DigikeyAPI(self.digikey_api_conf)
+        if self.digikey_api.needs_client_id() or self.digikey_api.needs_client_secret():
+            c_id = questionary.text("Enter the Digikey API client ID for the API: ").ask()
+            if c_id == '' or c_id is None:
+                console.print("[red]You need a client ID to use the digikey API[/]")
+                self.is_digikey_available = False
+                return
+            c_sec = questionary.password("Enter the Digikey API client secret for the API: ").ask()
+            if c_sec == '' or c_sec is None:
+                console.print("[red]You need a client ID to use the digikey API[/]")
+                self.is_digikey_available = False
+                return
+            self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
+
     def checkout_digikey_api_fork(self):
-        s = subprocess.run(['git', 'clone', 'https://github.com/Electro707/digikey-api.git', 'e707-digikey-api', '-b', 'e707_fork'])
+        s = subprocess.run(['git', 'clone', 'https://github.com/Electro707/digikey-api.git', os.path.dirname(os.path.abspath(__file__)) + '/e707_digikey_api', '-b', 'e707_fork'])
         if s.returncode != 0:
             console.print(['[red]Did not sucessfully checkout E707\'s fork of the Digikey API'])
             console.print(s.stdout)
             return
         console.print('Checkout E707\'s fork of the Digikey API')
+        m = importlib.import_module('.v3.api', package='e707_digikey_api.digikey')
+        globals()['DigikeyAPI'] = m.DigikeyAPI
+        importlib.invalidate_caches()
         self.is_digikey_available = True
+        self.digikey_api_setup()
+
+    def
 
     @staticmethod
     def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
@@ -438,9 +520,7 @@ class CLI:
         while 1:
             console.print("Current selected database is: %s" % self.conf.get_selected_database())
             to_do = questionary.select("What do you want to? ", choices=["Add Database", "Wipe Database", "Select another database", self.return_formatted_choice]).ask()
-            if to_do is None:
-                break
-            if to_do == "Return":
+            if to_do is None or to_do == "Return":
                 break
             elif to_do == "Add Database":
                 try:
@@ -461,6 +541,18 @@ class CLI:
                 console.print("[red]Please restart software for it to take into effect[/]")
                 raise KeyboardInterrupt()
 
+    def digikey_api_settings_menu(self):
+        if not self.is_digikey_available:
+            d_set = questionary.confirm("The Digikey API is not setup. Would you like to do that?", auto_enter=False, default=False).ask()
+            if d_set is not True:
+                console.print("[orange]API is not setup[/]")
+                return
+            self.checkout_digikey_api_fork()
+        while 1:
+            to_do = questionary.select("What do you want to? ", choices=["Set ClientID and ClientSecret", self.return_formatted_choice]).ask()
+            if to_do is None or to_do == "Return":
+                break
+
     def main(self):
         # Check DB version before doing anything
         if not self.db.is_latest_database():
@@ -475,7 +567,7 @@ class CLI:
             while 1:
                 to_do = questionary.select("Select the component you want do things with:",
                                            choices=['Add new part', 'Add new stock', 'Remove stock', 'Individual Components View',
-                                                    'Database Setting', 'Exit']).ask()
+                                                    'Database Setting', 'Digikey API Settings', 'Exit']).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
@@ -504,6 +596,8 @@ class CLI:
                             break
                 elif to_do == 'Database Setting':
                     self.database_settings()
+                elif to_do == 'Digikey API Settings':
+                    self.digikey_api_settings_menu()
 
         except KeyboardInterrupt:
             pass

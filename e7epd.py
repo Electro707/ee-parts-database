@@ -85,7 +85,7 @@ class E7EPD:
                 self.session.add(p)
                 self.log.debug('Inserted key-value pair: {}={}'.format(key, value))
             elif len(d) == 1:
-                p = d[0].val = value
+                d[0].val = value
                 self.log.debug('Updated key {} with value {}'.format(key, value))
             else:
                 raise UserWarning("There isn't supposed to be more than 1 key")

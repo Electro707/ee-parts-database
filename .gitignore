@@ -11,4 +11,4 @@ __pycache__
 _build
 
 # My fork of the digikey API, used for some optional features
-e707-digikey-api
+e707_digikey_api
