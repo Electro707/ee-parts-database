@@ -141,7 +141,7 @@ class E7EPD:
                     None if the part doesn't exist in the database, The SQL ID if it does
 
                 Raises:
-                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the latter, please create a PR with the traceback
+                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
                     InputException: If the manufacturer part number is None, this will get raised
             """
             if mfr_part_numb is not None:
@@ -205,9 +205,14 @@ class E7EPD:
 
                 Args:
                      part_info (GenericItem): The part item class you want to update
+
+                Raises:
+                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
             """
             if part_info.mfr_part_numb is not None:
                 q = self.session.query(self.part_type).filter_by(mfr_part_numb=part_info.mfr_part_numb)
+                if len(q.all()):
+                    raise UserWarning("There is more than 1 entry for a manufacturer part number")
                 q.update(part_info, synchronize_session="fetch")
 
         def delete_part_by_mfr_number(self, mfr_part_numb: str):
@@ -250,25 +255,33 @@ class E7EPD:
             self.session.add(part_info)
             self.session.commit()
 
-        def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int):
+        def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int) -> int:
             """ Appends stock to a part by the manufacturer part number
 
             Args:
                 mfr_part_numb (str): The manufacturer number to add the stock to
                 append_by: How much stock to add
 
+            Returns:
+                The new stock of the part after the appending
+
             Raises:
                 EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
             """
             part = self.get_part_by_mfr_part_numb(mfr_part_numb)
             part.stock += append_by
+            self.session.commit()
+            return part.stock
 
-        def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int):
+        def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int) -> int:
             """ Removes stock from a part by the manufacturer part number
 
             Args:
                 mfr_part_numb (str): The manufacturer number to add the stock to
                 remove_by: How much stock to remove from the part
+
+            Returns:
+                The new stock of the part after removal
 
             Raises:
                 EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
@@ -278,6 +291,7 @@ class E7EPD:
                 raise NegativeStock(part.stock)
             part.stock -= remove_by
             self.session.commit()
+            return part.stock
 
         def get_all_parts(self) -> typing.List[spec.GenericItem]:
             """ Get all parts in the database

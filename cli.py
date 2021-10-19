@@ -411,14 +411,21 @@ class CLI:
 
     def delete_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ This gets called when a part is to be deleted """
+        if part_db is None:
+            part_db = self.choose_component()
         try:
             mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
         except self._HelperFunctionExitError:
             return
-        try:
-            part_db.delete_part_by_mfr_number(mfr_part_numb)
-        except e7epd.EmptyInDatabase:
-            console.print("[red]The manufacturer is not in the database[/]")
+        if questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False, default=False).ask():
+            try:
+                part_db.delete_part_by_mfr_number(mfr_part_numb)
+            except e7epd.EmptyInDatabase:
+                console.print("[red]The manufacturer is not in the database[/]")
+            else:
+                console.print("Deleted %s from the database" % mfr_part_numb)
+        else:
+            console.print("Did not delete the part, it is safe.")
 
     def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None):
         if part_db is None:
@@ -437,8 +444,8 @@ class CLI:
                     console.print("Must be an integer")
                     continue
                 break
-            part_db.append_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, append_by=add_by)
-            console.print('[green]Add to your stock :)[/]')
+            new_s = part_db.append_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, append_by=add_by)
+            console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(new_s))
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
@@ -461,12 +468,28 @@ class CLI:
                     continue
                 break
             try:
-                part_db.remove_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, remove_by=remove_by)
+                new_s = part_db.remove_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, remove_by=remove_by)
             except e7epd.NegativeStock as e_v:
                 console.print("[red]Stock will go to negative[/]")
                 console.print("[red]If you want to make the stock zero, restart this operation and remove {:d} parts instead[/]".format(e_v.amount_to_make_zero))
             else:
-                console.print('[green]Removed to your stock :)[/]')
+                console.print('[green]Removed to your stock :). There is now {:d} left of it.[/]'.format(new_s))
+        except KeyboardInterrupt:
+            console.print("\nOk, no stock is changed")
+            return
+
+    def change_part_properties(self, part_db: e7epd.E7EPD.GenericPart):
+        """Function to update the part's properties"""
+        if part_db is None:
+            part_db = self.choose_component()
+        try:
+            # Ask for manufacturer part number first, and make sure there are no conflicts
+            try:
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
+            except self._HelperFunctionExitError:
+                return
+            part = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
+
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
