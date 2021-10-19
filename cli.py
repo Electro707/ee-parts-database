@@ -28,6 +28,7 @@ import sqlalchemy.orm
 # Local Modules Import
 import e7epd
 try:
+    sys.path.insert(1, 'e707_digikey_api')
     from e707_digikey_api.digikey.v3.api import DigikeyAPI
 except ImportError:
     digikey_api_en = False
@@ -40,6 +41,16 @@ l.setLevel(logging.WARNING)
 l.addHandler(RichHandler())
 
 console = rich.console.Console(style="blue")
+
+
+def CLIConfig_config_db_list_checker(func):
+    def wrap(self, *args, **kwargs):
+        if 'db_list' not in self.config:
+            raise self.NoDatabaseException()
+        if len(self.config['db_list']) == 0:
+            raise self.NoDatabaseException()
+        return func(self, *args, **kwargs)
+    return wrap
 
 
 class CLIConfig:
@@ -62,11 +73,8 @@ class CLIConfig:
         with open(self.file_path, 'w') as f:
             json.dump(self.config, f)
 
+    @CLIConfig_config_db_list_checker
     def get_database_connection(self, database_name: str = None) -> sqlalchemy.future.Engine:
-        if 'db_list' not in self.config:
-            raise self.NoDatabaseException()
-        if len(self.config['db_list']) == 0:
-            raise self.NoDatabaseException()
         if database_name is None:
             if 'last_db' not in self.config:
                 raise self.NoLastDBSelectionException()
@@ -83,11 +91,12 @@ class CLIConfig:
                                                                             self.config['db_list'][database_name]['db_host'], 3306,
                                                                             self.config['db_list'][database_name]['db_name']))
 
+    @CLIConfig_config_db_list_checker
+    def get_database_connection_info(self, database_name: str = None) -> dict:
+        return self.config['db_list'][database_name]
+
+    @CLIConfig_config_db_list_checker
     def get_stored_db_names(self) -> list:
-        if 'db_list' not in self.config:
-            raise self.NoDatabaseException()
-        if len(self.config['db_list']) == 0:
-            raise self.NoDatabaseException()
         return self.config['db_list'].keys()
 
     def get_selected_database(self) -> str:
@@ -167,6 +176,15 @@ class CLI:
     class _HelperFunctionExitError(Exception):
         pass
 
+    class _NoDigikeyApiError(Exception):
+        pass
+
+    class _ChooseComponentDigikeyBarcode(Exception):
+        def __init__(self, mfg_part_number: str, dk_info: dict):
+            self.mfg_part_number = mfg_part_number
+            self.dk_info = dk_info
+            super().__init__()
+
     def __init__(self, config: CLIConfig, database_connection: sqlalchemy.future.Engine):
         self.db_engine = database_connection
         self.db = e7epd.E7EPD(database_connection)
@@ -179,13 +197,22 @@ class CLI:
         if self.is_digikey_available:
             self.digikey_api_setup()
 
-        self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red green', 'Return')]))
+        self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
+        self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
 
     @staticmethod
     def check_if_digikey_api_folder():
         if os.path.isdir('e707_digikey_api'):
             return True
         return False
+
+    def check_for_dk_api(self):
+        if not self.is_digikey_available:
+            d_set = questionary.confirm("The Digikey API is not setup. Would you like to do that?", auto_enter=False, default=False).ask()
+            if d_set is not True:
+                console.print("[orange]API is not setup[/]")
+                raise self._NoDigikeyApiError
+            self.checkout_digikey_api_fork()
 
     def digikey_api_setup(self):
         self.digikey_api_conf = DKApiSQLConfig(sqlalchemy.orm.sessionmaker(self.db_engine)(), self.db_engine)
@@ -210,13 +237,12 @@ class CLI:
             console.print(s.stdout)
             return
         console.print('Checkout E707\'s fork of the Digikey API')
+        sys.path.insert(1, 'e707_digikey_api')
         m = importlib.import_module('.v3.api', package='e707_digikey_api.digikey')
         globals()['DigikeyAPI'] = m.DigikeyAPI
         importlib.invalidate_caches()
         self.is_digikey_available = True
         self.digikey_api_setup()
-
-    def
 
     @staticmethod
     def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
@@ -428,14 +454,23 @@ class CLI:
             console.print("Did not delete the part, it is safe.")
 
     def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None):
-        if part_db is None:
-            part_db = self.choose_component()
         try:
+            mfr_part_numb = None
+            if part_db is None:
+                try:
+                    part_db = self.choose_component()
+                except self._ChooseComponentDigikeyBarcode as e:
+                    r, part_db = self.db.check_if_already_in_db_by_manuf(e.mfg_part_number)
+                    if r is None:
+                        console.print("[red]Part must already exist in the database[/]")
+                        return
+                    mfr_part_numb = e.mfg_part_number
             # Ask for manufacturer part number first, and make sure there are no conflicts
-            try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
-            except self._HelperFunctionExitError:
-                return
+            if mfr_part_numb is None:
+                try:
+                    mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
+                except self._HelperFunctionExitError:
+                    return
             while 1:
                 add_by = questionary.text("Enter how much you want to add this part by: ").ask()
                 try:
@@ -521,9 +556,35 @@ class CLI:
                 self.remove_stock_from_part(part_db)
 
     def choose_component(self):
-        component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
+        component = questionary.select("Select the component you want do things with:", choices=[self.formatted_digikey_scan_choice] + list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
         if component is None or component == 'Return':
             raise KeyboardInterrupt()
+        elif component == 'dk_scan':
+            try:
+                self.check_for_dk_api()
+            except self._NoDigikeyApiError:
+                console.print("[red]No Digikey API is available[/]")
+                raise KeyboardInterrupt()
+
+            bc_code = questionary.text("Enter the Digikey barcode: ").ask()
+            if bc_code == '' or bc_code is None:
+                console.print("[red]No barcode entered[/]")
+                raise KeyboardInterrupt()
+            bc_code = bc_code.strip()
+            bc_code = bc_code.replace('{RS}', u"\u001E")
+            bc_code = bc_code.replace('{GS}', u"\u001D")
+            print(bc_code)
+            try:
+                b = self.digikey_api.barcode_2d(bc_code)
+            except:     # TODO: Add specific exception
+               console.print("[red]Digikey Barcode API error[/]")
+               raise KeyboardInterrupt()
+            try:
+                p_d = self.digikey_api.product_details(b.manufacturer_part_number)
+            except:     # TODO: Add specific exception
+                console.print("[red]Digikey Product Details API error[/]")
+                raise KeyboardInterrupt()
+            raise self._ChooseComponentDigikeyBarcode(b.manufacturer_part_number, p_d)
         part_db = self.db.components[component]
         return part_db
 
@@ -540,9 +601,9 @@ class CLI:
             return
 
     def database_settings(self):
+        console.print("Current selected database is: %s" % self.conf.get_selected_database())
         while 1:
-            console.print("Current selected database is: %s" % self.conf.get_selected_database())
-            to_do = questionary.select("What do you want to? ", choices=["Add Database", "Wipe Database", "Select another database", self.return_formatted_choice]).ask()
+            to_do = questionary.select("What do you want to? ", choices=["Add Database", "Wipe Database", "Print DB Info", "Select another database", self.return_formatted_choice]).ask()
             if to_do is None or to_do == "Return":
                 break
             elif to_do == "Add Database":
@@ -563,14 +624,22 @@ class CLI:
                 console.print("Selected the database %s" % db_name)
                 console.print("[red]Please restart software for it to take into effect[/]")
                 raise KeyboardInterrupt()
+            elif to_do == "Print DB Info":
+                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
+                if db_name is None:
+                    console.print("Nothing new was selected")
+                    continue
+                t = self.conf.get_database_connection_info(db_name)
+                if t['type'] == 'local':
+                    console.print("This is a SQLite3 server, where the file path is {}".format(t['filename']))
+                elif t['type'] == 'mysql_server':
+                    console.print("This is a mySQL server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t))
 
     def digikey_api_settings_menu(self):
-        if not self.is_digikey_available:
-            d_set = questionary.confirm("The Digikey API is not setup. Would you like to do that?", auto_enter=False, default=False).ask()
-            if d_set is not True:
-                console.print("[orange]API is not setup[/]")
-                return
-            self.checkout_digikey_api_fork()
+        try:
+            self.check_for_dk_api()
+        except self._NoDigikeyApiError:
+            return
         while 1:
             to_do = questionary.select("What do you want to? ", choices=["Set ClientID and ClientSecret", self.return_formatted_choice]).ask()
             if to_do is None or to_do == "Return":

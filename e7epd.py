@@ -528,6 +528,16 @@ class E7EPD:
         for c in self.components.values():
             c.session.commit()
 
+    def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
+        for c in self.components:
+            # temporary fix
+            if c == 'PCBs':
+                continue
+            p = self.components[c].check_if_already_in_db_by_manuf(mfr_part_numb)
+            if p is not None:
+                return p, self.components[c]
+        return None, None
+
     def wipe_database(self):
         """
             Wipes the component databases
