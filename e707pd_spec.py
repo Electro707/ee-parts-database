@@ -9,7 +9,6 @@ class Base(object):
     stock = Column(Integer, nullable=False)
     manufacturer = Column(String(default_string_len))
     storage = Column(String(default_string_len))
-    for_project = Column(String(default_string_len))
     mfr_part_numb = Column(String(default_string_len), nullable=False)
     package = Column(String(default_string_len))
     comments = Column(Text)
