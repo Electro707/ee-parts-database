@@ -244,6 +244,40 @@ class CLI:
         self.is_digikey_available = True
         self.digikey_api_setup()
 
+    def scan_digikey_barcode(self, bc_code: str = None):
+        """
+        Function that asks the user for a Digikey barcode scan, and finds the manufacturer part number as
+        well as the part's Digikey info if requested
+
+        TODO: The digikey info return should be parsed by this function to get useful values
+        Args:
+            bc_code (str): The scanned digikey barcode. In given, this function will not ask for it
+            get_only_mfg (bool, optional(True)): Whether to only get the mfg part number instead of get some digikey info
+
+        Returns:
+
+        """
+        try:
+            self.check_for_dk_api()
+        except self._NoDigikeyApiError:
+            console.print("[red]No Digikey API is available[/]")
+            raise KeyboardInterrupt()
+
+        if bc_code is None:
+            bc_code = questionary.text("Enter the Digikey barcode: ").ask()
+        if bc_code == '' or bc_code is None:
+            console.print("[red]No barcode entered[/]")
+            raise KeyboardInterrupt()
+        bc_code = bc_code.strip()
+        bc_code = bc_code.replace('{RS}', u"\u001E")
+        bc_code = bc_code.replace('{GS}', u"\u001D")
+        try:
+            b = self.digikey_api.barcode_2d(bc_code)
+        except:     # TODO: Add specific exception
+            console.print("[red]Digikey Barcode API error[/]")
+            raise KeyboardInterrupt()
+        return b.manufacturer_part_number, b
+
     @staticmethod
     def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
         """
@@ -264,12 +298,19 @@ class CLI:
             except e7epd.EmptyInDatabase:
                 console.print("[red]No parts found in database[/]")
                 raise self._HelperFunctionExitError()
-            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number: ", choices=mfr_list).ask()
+            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=mfr_list).ask()
         else:
-            mfr_part_numb = questionary.text("Enter the manufacturer part number: ").ask()
+            mfr_part_numb = questionary.text("Enter the manufacturer part number (or scan a Digikey barcode): ").ask()
         if mfr_part_numb == '' or mfr_part_numb is None:
             console.print("[red]Must have a manufacturer part number[/]")
             raise self._HelperFunctionExitError()
+        mfr_part_numb = mfr_part_numb.strip()
+        mfr_part_numb = mfr_part_numb.upper()
+        if mfr_part_numb.startswith('[)>'):
+            try:
+                mfr_part_numb, p = self.scan_digikey_barcode(mfr_part_numb)
+            except KeyboardInterrupt:
+                raise self._HelperFunctionExitError()
         if must_already_exist is True:
             if mfr_part_numb not in mfr_list:
                 console.print("[red]Part must already exist in the database[/]")
@@ -278,8 +319,7 @@ class CLI:
             if mfr_part_numb in mfr_list:
                 console.print("[red]Part must not already exist in the database, which it does![/]")
                 raise self._HelperFunctionExitError()
-        mfr_part_numb = mfr_part_numb.strip()
-        return mfr_part_numb.upper()
+        return mfr_part_numb
 
     def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
@@ -306,13 +346,18 @@ class CLI:
         parts_list = part_db.get_all_parts()
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
-    @staticmethod
-    def ask_for_spec_input(spec: dict, choices: list = None) -> str:
+    def ask_for_spec_input(self, part_db: e7epd.E7EPD.GenericPart, spec: dict, choices: list = None) -> str:
         while 1:
-            if choices:
-                inp = questionary.autocomplete("Enter value for %s: " % spec['showcase_name'], choices=choices).ask()
+            if spec['db_name'] == 'mfr_part_numb':
+                try:
+                    inp = self._ask_manufacturer_part_number(part_db)
+                except self._HelperFunctionExitError:
+                    raise KeyboardInterrupt()
             else:
-                inp = questionary.text("Enter value for %s: " % spec['showcase_name']).ask()
+                if choices:
+                    inp = questionary.autocomplete("Enter value for %s: " % spec['showcase_name'], choices=choices).ask()
+                else:
+                    inp = questionary.text("Enter value for %s: " % spec['showcase_name']).ask()
             if inp is None:
                 raise KeyboardInterrupt()
             if inp == '':
@@ -387,7 +432,7 @@ class CLI:
         for spec in specs_selected:
             autocomplete_choices = self.get_autocomplete_list(spec['db_name'], part_db.table_name)
             try:
-                inp = self.ask_for_spec_input(spec, autocomplete_choices)
+                inp = self.ask_for_spec_input(part_db, spec, autocomplete_choices)
             except KeyboardInterrupt:
                 console.print("Canceled part lookup")
                 return
@@ -399,11 +444,32 @@ class CLI:
             return
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
+    def get_partdb_and_mfg(self, part_db: e7epd.E7EPD.GenericPart = None, mfg_must_exist: bool = None):
+        mfr_part_numb = None
+        if part_db is None:
+            try:
+                part_db = self.choose_component()
+            except KeyboardInterrupt:
+                raise self._HelperFunctionExitError()
+        # Ask for manufacturer part number first, and make sure there are no conflicts
+        if mfr_part_numb is None:
+            try:
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=mfg_must_exist)
+            except self._HelperFunctionExitError:
+                raise self._HelperFunctionExitError()
+        return part_db, mfr_part_numb
+
     def add_new_part(self, part_db: e7epd.E7EPD.GenericPart = None):
         """ Function gets called when a part is to be added """
-        if part_db is None:
-            part_db = self.choose_component()
         try:
+
+            if part_db is None:
+                try:
+                    part_db = self.choose_component()
+                except self._ChooseComponentDigikeyBarcode as e:
+                    print(e.dk_info)
+                    console.print("[red]Digikey component for adding a part isn't supported, yet[/]")
+                    return
             if 'mfr_part_numb' in part_db.table_item_display_order:
                 try:
                     mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=False)
@@ -425,7 +491,7 @@ class CLI:
                     return
                 # Ask the suer for that property
                 try:
-                    setattr(new_part, spec_db_name, self.ask_for_spec_input(spec, autocomplete_choices))
+                    setattr(new_part, spec_db_name, self.ask_for_spec_input(part_db, spec, autocomplete_choices))
                 except KeyboardInterrupt:
                     console.print("Did not add part")
                     return
@@ -437,10 +503,8 @@ class CLI:
 
     def delete_part(self, part_db: e7epd.E7EPD.GenericPart):
         """ This gets called when a part is to be deleted """
-        if part_db is None:
-            part_db = self.choose_component()
         try:
-            mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
+            part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
         except self._HelperFunctionExitError:
             return
         if questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False, default=False).ask():
@@ -455,22 +519,10 @@ class CLI:
 
     def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None):
         try:
-            mfr_part_numb = None
-            if part_db is None:
-                try:
-                    part_db = self.choose_component()
-                except self._ChooseComponentDigikeyBarcode as e:
-                    r, part_db = self.db.check_if_already_in_db_by_manuf(e.mfg_part_number)
-                    if r is None:
-                        console.print("[red]Part must already exist in the database[/]")
-                        return
-                    mfr_part_numb = e.mfg_part_number
-            # Ask for manufacturer part number first, and make sure there are no conflicts
-            if mfr_part_numb is None:
-                try:
-                    mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
-                except self._HelperFunctionExitError:
-                    return
+            try:
+                part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
+            except self._HelperFunctionExitError:
+                return
             while 1:
                 add_by = questionary.text("Enter how much you want to add this part by: ").ask()
                 try:
@@ -486,12 +538,9 @@ class CLI:
             return
 
     def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericPart = None):
-        if part_db is None:
-            part_db = self.choose_component()
         try:
-            # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
+                part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
             except self._HelperFunctionExitError:
                 return
             while 1:
@@ -514,7 +563,10 @@ class CLI:
             return
 
     def change_part_properties(self, part_db: e7epd.E7EPD.GenericPart):
-        """Function to update the part's properties"""
+        """
+        WIP FUNCTION!!!!!
+        Function to update the part's properties
+        """
         if part_db is None:
             part_db = self.choose_component()
         try:
@@ -555,36 +607,16 @@ class CLI:
             elif to_do == "Remove Stock":
                 self.remove_stock_from_part(part_db)
 
-    def choose_component(self):
-        component = questionary.select("Select the component you want do things with:", choices=[self.formatted_digikey_scan_choice] + list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
+    def choose_component(self) -> e7epd.E7EPD.GenericPart:
+        """
+        Dialog to choose which component to use.
+        Returns: The component class
+        Raises _ChooseComponentDigikeyBarcode: If instead of a component by itself a Digikey barcode is scanned
+        Raises KeyboardInterrupt: If a component is not chosen
+        """
+        component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
         if component is None or component == 'Return':
             raise KeyboardInterrupt()
-        elif component == 'dk_scan':
-            try:
-                self.check_for_dk_api()
-            except self._NoDigikeyApiError:
-                console.print("[red]No Digikey API is available[/]")
-                raise KeyboardInterrupt()
-
-            bc_code = questionary.text("Enter the Digikey barcode: ").ask()
-            if bc_code == '' or bc_code is None:
-                console.print("[red]No barcode entered[/]")
-                raise KeyboardInterrupt()
-            bc_code = bc_code.strip()
-            bc_code = bc_code.replace('{RS}', u"\u001E")
-            bc_code = bc_code.replace('{GS}', u"\u001D")
-            print(bc_code)
-            try:
-                b = self.digikey_api.barcode_2d(bc_code)
-            except:     # TODO: Add specific exception
-               console.print("[red]Digikey Barcode API error[/]")
-               raise KeyboardInterrupt()
-            try:
-                p_d = self.digikey_api.product_details(b.manufacturer_part_number)
-            except:     # TODO: Add specific exception
-                console.print("[red]Digikey Product Details API error[/]")
-                raise KeyboardInterrupt()
-            raise self._ChooseComponentDigikeyBarcode(b.manufacturer_part_number, p_d)
         part_db = self.db.components[component]
         return part_db
 
