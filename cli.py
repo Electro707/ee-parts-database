@@ -28,8 +28,7 @@ import sqlalchemy.orm
 # Local Modules Import
 import e7epd
 try:
-    sys.path.insert(1, 'e707_digikey_api')
-    from e707_digikey_api.digikey.v3.api import DigikeyAPI
+    from e707_digikey.v3.api import DigikeyAPI
 except ImportError:
     digikey_api_en = False
 else:
@@ -208,11 +207,9 @@ class CLI:
 
     def check_for_dk_api(self):
         if not self.is_digikey_available:
-            d_set = questionary.confirm("The Digikey API is not setup. Would you like to do that?", auto_enter=False, default=False).ask()
-            if d_set is not True:
-                console.print("[orange]API is not setup[/]")
-                raise self._NoDigikeyApiError
-            self.checkout_digikey_api_fork()
+            console.print("[orange]API is not setup[/]")
+            console.print("[orange]Please install it with 'pip install git+git://github.com/Electro707/digikey-api.git@1fd3abec434b87a7c051bfa95487c2bfbd4a7651'[/]")
+            raise self._NoDigikeyApiError
 
     def digikey_api_setup(self):
         self.digikey_api_conf = DKApiSQLConfig(sqlalchemy.orm.sessionmaker(self.db_engine)(), self.db_engine)
@@ -229,20 +226,6 @@ class CLI:
                 self.is_digikey_available = False
                 return
             self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
-
-    def checkout_digikey_api_fork(self):
-        s = subprocess.run(['git', 'clone', 'https://github.com/Electro707/digikey-api.git', os.path.dirname(os.path.abspath(__file__)) + '/e707_digikey_api', '-b', 'e707_fork'])
-        if s.returncode != 0:
-            console.print(['[red]Did not sucessfully checkout E707\'s fork of the Digikey API'])
-            console.print(s.stdout)
-            return
-        console.print('Checkout E707\'s fork of the Digikey API')
-        sys.path.insert(1, 'e707_digikey_api')
-        m = importlib.import_module('.v3.api', package='e707_digikey_api.digikey')
-        globals()['DigikeyAPI'] = m.DigikeyAPI
-        importlib.invalidate_caches()
-        self.is_digikey_available = True
-        self.digikey_api_setup()
 
     def scan_digikey_barcode(self, bc_code: str = None):
         """
