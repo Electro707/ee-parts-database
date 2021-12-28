@@ -71,7 +71,7 @@ class CLIConfig:
 
     def save(self):
         with open(self.file_path, 'w') as f:
-            json.dump(self.config, f)
+            json.dump(self.config, f, indent=4)
 
     @CLIConfig_config_db_list_checker
     def get_database_connection(self, database_name: str = None) -> sqlalchemy.future.Engine:
@@ -562,7 +562,7 @@ class CLI:
             console.print("\nOk, no stock is changed")
             return
 
-    def change_part_properties(self, part_db: e7epd.E7EPD.GenericPart):
+    def edit_part(self, part_db: e7epd.E7EPD.GenericPart):
         """
         WIP FUNCTION!!!!!
         Function to update the part's properties
@@ -576,15 +576,41 @@ class CLI:
             except self._HelperFunctionExitError:
                 return
             part = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
+            while 1:
+                q = []
+                for spec_db_name in part_db.table_item_display_order:
+                    if spec_db_name == "mfr_part_numb":
+                        continue
+                    spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
+                    if spec is None:
+                        console.print("[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
+                        return
+                    q.append(questionary.Choice(title="{:}: {:}".format(spec['showcase_name'], getattr(part, spec['db_name'])), value=spec))
+                q.append(questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Save and Exit')]), value='exit_save'))
+                q.append(questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red', 'Exit without Saving')]), value='no_save'))
+                to_change = questionary.select("Choose a field to edit:", q).ask()
+                if to_change is None:
+                    raise KeyboardInterrupt()
+                if to_change == 'exit_save':
+                    part_db.commit()
+                    break
+                if to_change == 'no_save':
+                    raise KeyboardInterrupt()
+                try:
+                    setattr(part, to_change['db_name'], self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change['db_name'], part_db.table_name)))
+                except KeyboardInterrupt:
+                    console.print("Did not change part")
+                    return
 
         except KeyboardInterrupt:
+            part_db.rollback()
             console.print("\nOk, no stock is changed")
             return
 
     def component_cli(self, part_db: e7epd.E7EPD.GenericPart):
         """ The CLI handler for components """
         while 1:
-            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", self.return_formatted_choice]).ask()
+            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Edit Part", self.return_formatted_choice]).ask()
             if to_do is None:
                 raise KeyboardInterrupt()
             if to_do == "Return":
@@ -606,6 +632,8 @@ class CLI:
                 self.add_stock_to_part(part_db)
             elif to_do == "Remove Stock":
                 self.remove_stock_from_part(part_db)
+            elif to_do == "Edit Part":
+                self.edit_part(part_db)
 
     def choose_component(self) -> e7epd.E7EPD.GenericPart:
         """
@@ -680,7 +708,7 @@ class CLI:
     def main(self):
         # Check DB version before doing anything
         if not self.db.is_latest_database():
-            do_update = questionary.confirm("Database is not at the latest version. Updrade?", auto_enter=False).ask()
+            do_update = questionary.confirm("Database {:} is not at the latest version. Updrade?".format(self.conf.get_selected_database()), auto_enter=False, default=False).ask()
             if do_update:
                 self.db.update_database()
             else:

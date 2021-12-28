@@ -1,6 +1,6 @@
 E7EPD Database Specification 
 ================================================
-**Rev 0.3**
+**Rev 0.4PRE**
 
 Specification Notes
 ---------------------------------
@@ -30,6 +30,7 @@ manufacturer  VARCHAR                               The manufacturer of the comp
 package       VARCHAR                   YES         The part's physical package
 storage       VARCHAR                               The part's storage location
 comments      TEXT                                  Comments about the part
+datasheet     TEXT                                  The datasheet of the part
 ============= ========================= =========== =======================================================
 
 Resistor Table
@@ -202,8 +203,13 @@ Misc Table
 This table is exactly the same as the *GenericPart* Table.
 Table Name: ``misc_c``
 
-PCBs Table
+PCBs
 ---------------------------------
+Each PCB will have parts associated with it. This should allow the user application to determine if it's possible to
+build up a board given the current component's stock.
+
+PCB Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Table Name: ``pcb``
 
 ============= ========================= =========== =======================================================
@@ -211,13 +217,23 @@ Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
 id            INTEGER PRIMARY KEY       YES         Each row in the database will contain an unique SQL ID
 stock         INT                       YES         The number of parts in stock
-rev           VARCHAR                   YES         The project's revision
-sub_rev       VARCHAR                               The project's sub-revision
-project_name  VARCHAR                   YES         The project name related to this part. The project should match that of the Projects database (upcoming in future rev)
+board_name    VARCHAR                   YES         The board's name. Can also be thought of as the project's name
+rev           VARCHAR                   YES         The pcb's revision
+sub_rev       VARCHAR                               The pcb's sub-revision
 comments      TEXT                                  Comments about the part
+parts         JSON                      YES         A JSON list containing all of the parts used for this project
 ============= ========================= =========== =======================================================
 
-Projects
----------------------------------
-TODO, in a future revision
+Parts JSON List
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The parts JSON is a list of dictionaries containing the all parts used for a particular board.
 
+The dictionaries in this list is formatted as follows for a component:
+============= ============= =======================================================
+Key           Value Type    Description
+============= ============= =======================================================
+comp_type     string        The component type (resistor, bjt, etc) which corresponds to the part's table name
+mfr_part_numb string        The manufacturer part number for this part
+qty           int           The quantity of this part used in this board
+alternatives  list          A list of alternative parts (list with the manufacturer part number) that can be used. This list can be left as an empty array.
+============= ============= =======================================================

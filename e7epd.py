@@ -6,7 +6,7 @@ import sqlalchemy
 import sqlalchemy.future
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, Float, String
+from sqlalchemy import Column, Integer, Float, String, Text, JSON
 from alembic.runtime.migration import MigrationContext
 from alembic.operations import Operations
 import typing
@@ -16,7 +16,7 @@ import e707pd_spec as spec
 # Version of this backend
 __version__ = '0.4pre'
 # Version of the database spec
-database_spec_rev = '0.3'
+database_spec_rev = '0.4'
 
 
 class InputException(Exception):
@@ -45,15 +45,6 @@ class NegativeStock(Exception):
 
 
 class E7EPD:
-    # class _CustomCursor(sqlite3.Cursor):
-    #     def __init__(self, *args, **kwargs):
-    #         super().__init__(*args, **kwargs)
-    #         self.log = logging.getLogger('sql')
-    #
-    #     def execute(self, sql: str, parameters: typing.Iterable[typing.Any] = []) -> sqlite3.Cursor:
-    #         self.log.debug('Executing SQL command %s with params %s' % (sql, parameters))
-    #         return super().execute(sql, parameters)
-
     class ConfigTable:
         _Base = declarative_base()
 
@@ -123,8 +114,9 @@ class E7EPD:
                 Args:
                     part_info (GenericItem): A part item class
 
-                TODO:
-                    Add check if the manufacturer is empty
+                Raises:
+                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
+                    InputException: If the manufacturer part number is None, this will get raised
             """
             return self.check_if_already_in_db_by_manuf(part_info.mfr_part_numb)
 
@@ -198,22 +190,6 @@ class E7EPD:
             else:
                 # TODO: Add exception, as having more than 1 of the same ID is impossible
                 raise UserWarning()
-
-        def update_part(self, part_info: spec.GenericItem):
-            """
-                Update a part based on manufacturer part number
-
-                Args:
-                     part_info (GenericItem): The part item class you want to update
-
-                Raises:
-                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
-            """
-            if part_info.mfr_part_numb is not None:
-                q = self.session.query(self.part_type).filter_by(mfr_part_numb=part_info.mfr_part_numb)
-                if len(q.all()):
-                    raise UserWarning("There is more than 1 entry for a manufacturer part number")
-                q.update(part_info, synchronize_session="fetch")
 
         def delete_part_by_mfr_number(self, mfr_part_numb: str):
             """
@@ -340,6 +316,18 @@ class E7EPD:
             if d == 0:
                 return True
             return False
+
+        def commit(self):
+            """
+                Commits any changes done to part(s)
+            """
+            self.session.commit()
+
+        def rollback(self):
+            """
+                Roll back changes done to part(s)
+            """
+            self.session.rollback()
 
     class Resistance(GenericPart):
         def __init__(self, session: sqlalchemy.orm.Session):
@@ -501,7 +489,6 @@ class E7EPD:
             'Fuses': self.fuses,
             'Buttons': self.buttons,
             'Misc': self.misc_cs,
-            'PCBs': self.pcbs,
         }
 
         spec.GenericItem.metadata.create_all(self.db_conn)
@@ -557,13 +544,21 @@ class E7EPD:
             op = Operations(ctx)
             self.log.info("Backing up database before applying changes")
             self.backup_db()
-            if self.config.get_db_version() == '0.2':   # From 0.2 -> 0.3
+            v = self.config.get_db_version()
+            if v == '0.2':   # From 0.2 -> 0.3
                 for c in self.components:
                     op.add_column(self.components[c].table_name, Column('storage', String(spec.default_string_len)))
                     op.drop_column(self.components[c].table_name, 'part_comments')
-                    op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments', type=sqlalchemy.Text)
+                    op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments', type_=Text)
                 # Remove the capacitor's power column
                 op.drop_column(self.components['Capacitors'].table_name, 'power')
+                v = '0.3'
+            if v == '0.3':
+                # Add the datasheet column for each component
+                for c in self.components:
+                    op.add_column(self.components[c].table_name, Column('datasheet', Text))
+                op.alter_column(self.pcbs.table_name, 'project_name', type_=String(spec.default_string_len), new_column_name='board_name')
+                op.add_column(self.pcbs.table_name, Column('parts', JSON, nullable=False))
             self.config.store_db_version()
 
     def is_latest_database(self) -> bool:
@@ -580,14 +575,13 @@ class E7EPD:
         """
             Backs up the database under a new backup file
         """
-        self.log.error('BACKUP FUNCTION IS INACTIVE')
-        return
-        new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s' % time.strftime('%y%m%d%H%M%S')
+        new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s.json' % time.strftime('%y%m%d%H%M%S')
         self.log.info("Backing database under %s" % new_db_file)
-        # For now do with only SQLite3
-        # TODO: Make the backup function compatible with mySQL once that's implemented
-        backup_conn = sqlite3.connect(new_db_file)
-        with backup_conn:
-            self.conn.backup(backup_conn)
-        self.log.info("Successfully backed-up database")
-        backup_conn.close()
+        # https://stackoverflow.com/questions/47307873/read-entire-database-with-sqlalchemy-and-dump-as-json
+        meta = sqlalchemy.MetaData()
+        meta.reflect(bind=self.db_conn)  # http://docs.sqlalchemy.org/en/rel_0_9/core/reflection.html
+        result = {}
+        for table in meta.sorted_tables:
+            result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
+        with open(new_db_file, 'x') as f:
+            json.dump(result, f, indent=4)

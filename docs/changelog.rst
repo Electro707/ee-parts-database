@@ -28,9 +28,10 @@ E7EPD Database Specification
         * Fuses
         * Switches/Buttons
         * Misc/Others
-
-* TODOs:
-    * Add datasheet column
+* v0.4 (WIP):
+    * Added datasheet column for all components
+    * Removal of ``project_name`` from the PCB table and replaced it ``board_name``
+    * Added a ``parts`` JSON list for the PCB table, allowing parts to be cross-referenced per board
 
 Database Python DB Wrapper
 --------------------------------------------
@@ -53,6 +54,10 @@ Database Python DB Wrapper
     * Added a ``PCB`` class from database spec (didn't for 0.2)
     * Added autofill helpers for the new component types
     * Re-factored backend spec and display_as lists
+* v0.4 (WIP):
+    * Updated spec for Database Rev 0.4
+    * Added migrations from database rev 0.3 to 0.4
+    * More autofill helpers
 
 CLI
 -----------
@@ -73,7 +78,11 @@ CLI
     * Allowing option for a mySQL database
     * Allowing option to add multiple databases
     * Allowing option to select which database to connect to
+* v0.4 (WIP):
+    * Added ability to scan a Digikey barcode for the manufacturer part number
+    * Added ability to edit a part's properties
 
 * TODOs:
-    * Add option to edit a component's properties.
     * Add option to import BOM file/CSV file
+    * Add ability to "interact" with the PCB table
+    * Add cross-coerelation between a PCB's parts and parts in the database

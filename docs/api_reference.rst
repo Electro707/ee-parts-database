@@ -30,4 +30,11 @@ Here are the current autofill helpers available:
 * ``ic_types``: The IC type, like Microcontroller and ADC
 * ``capacitor_types``: Capacitor types like Ceramic and Electrolytic
 * ``diode_type``: Diode Types
+* ``passive_manufacturers``: Passives (resistors, capacitors, etc) manufacturers
+* ``passive_packages``: Packages for passives
+* ``ic_packages``: Packages for ICs
+* ``mosfet_types``: MOSFET types (N-Channel, P-Channel)
+* ``bjt_types``: BTJ Type (NPN, PNP)
+* ``fuse_types``: Fuse Type (Slow Blow, PTC, etc)
+* ``led_types``: LED "Type" (Red, RGB, Addressable, etc)
 
