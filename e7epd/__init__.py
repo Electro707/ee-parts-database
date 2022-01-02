@@ -4,4 +4,4 @@ import e7epd.e707pd_spec as spec
 
 
 # Version of this backend
-__version__ = '0.4.rc1'
+__version__ = '0.4'

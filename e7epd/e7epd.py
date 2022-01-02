@@ -84,7 +84,7 @@ class E7EPD:
         def get_db_version(self) -> typing.Union[str, None]:
             return self.get_info('db_ver')
 
-        def store_db_version(self):
+        def store_current_db_version(self):
             self.store_info('db_ver', database_spec_rev)
 
     class GenericPart:
@@ -494,7 +494,7 @@ class E7EPD:
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
-            self.config.store_db_version()
+            self.config.store_current_db_version()
 
     def close(self):
         """
@@ -557,7 +557,7 @@ class E7EPD:
                     op.add_column(self.components[c].table_name, Column('datasheet', Text))
                 op.alter_column(self.pcbs.table_name, 'project_name', type_=String(spec.default_string_len), new_column_name='board_name')
                 op.add_column(self.pcbs.table_name, Column('parts', JSON, nullable=False))
-            self.config.store_db_version()
+            self.config.store_current_db_version()
 
     def is_latest_database(self) -> bool:
         """

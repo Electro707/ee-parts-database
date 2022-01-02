@@ -25,6 +25,7 @@ import json
 import sqlalchemy
 import sqlalchemy.future
 import sqlalchemy.orm
+import pkg_resources
 # Local Modules Import
 import e7epd
 # Import of my fork of the digikey_api package
@@ -63,7 +64,9 @@ class CLIConfig:
             super().__init__("There isn't a last selected database")
 
     def __init__(self):
-        self.file_path = os.path.dirname(os.path.abspath(__file__)) + '/cli_config.json'
+        if not pkg_resources.resource_isdir(__name__, 'data'):
+            os.mkdir(pkg_resources.resource_filename(__name__, "data"))
+        self.file_path = pkg_resources.resource_filename(__name__, "data/cli_config.json")
         self.config = {}
         if os.path.isfile(self.file_path):
             with open(self.file_path) as f:
@@ -84,7 +87,7 @@ class CLIConfig:
 
         self.config['last_db'] = database_name
         if self.config['db_list'][database_name]['type'] == 'local':
-            return sqlalchemy.create_engine("sqlite:///{}".format(self.config['db_list'][database_name]['filename']))
+            return sqlalchemy.create_engine("sqlite:///{}".format(pkg_resources.resource_filename(__name__, 'data/'+self.config['db_list'][database_name]['filename'])))
         elif self.config['db_list'][database_name]['type'] == 'mysql_server':
             return sqlalchemy.create_engine("mysql://{}:{}@{}:{}/{}".format(self.config['db_list'][database_name]['username'],
                                                                             self.config['db_list'][database_name]['password'],
@@ -171,7 +174,7 @@ class DKApiSQLConfig:
 
 
 class CLI:
-    cli_revision = '0.4pre'
+    cli_revision = e7epd.__version__
 
     class _HelperFunctionExitError(Exception):
         pass
@@ -548,7 +551,6 @@ class CLI:
 
     def edit_part(self, part_db: e7epd.E7EPD.GenericPart):
         """
-        WIP FUNCTION!!!!!
         Function to update the part's properties
         """
         if part_db is None:
@@ -755,7 +757,6 @@ def ask_for_database(config: CLIConfig):
         config.save_database_as_mysql(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
     elif is_server == 'SQlite':
         file_name = questionary.text("Please enter the name of the server database file you want to be created").unsafe_ask()
-        config.save_database_as_sqlite(db_id_name, file_name)
         if '.db' not in file_name:
             file_name += '.db'
         config.save_database_as_sqlite(db_id_name, file_name)

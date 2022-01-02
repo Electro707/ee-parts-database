@@ -1,6 +1,6 @@
 E7EPD Database Specification 
 ================================================
-**Rev 0.4PRE**
+**Rev 0.4**
 
 Specification Notes
 ---------------------------------
@@ -229,11 +229,32 @@ Parts JSON List
 The parts JSON is a list of dictionaries containing the all parts used for a particular board.
 
 The dictionaries in this list is formatted as follows for a component:
+
 ============= ============= =======================================================
 Key           Value Type    Description
 ============= ============= =======================================================
 comp_type     string        The component type (resistor, bjt, etc) which corresponds to the part's table name
-mfr_part_numb string        The manufacturer part number for this part
+part          dict          A dictionary describing the part
 qty           int           The quantity of this part used in this board
-alternatives  list          A list of alternative parts (list with the manufacturer part number) that can be used. This list can be left as an empty array.
+alternatives  list          A list of alternative parts that can be used, each part being the same format as the part key above. This list can be left as an empty array.
 ============= ============= =======================================================
+
+The part key above is a dictionary containing a set of filter key-value pairs that narrows down a part.
+For example, for a part with the manufacturer part number of "PART123", the part dict would be
+.. code-block::
+
+    {
+        mfr_part_numb: PART123
+    }
+
+As the manufacturer part number is unique to each part, this filter would only find a single part. With a resistor
+for example, where a specific part does not matter, the part dict would look something like
+.. code-block::
+
+    {
+        resistance: 1000
+        power: >0.125
+        package: 0805
+    }
+
+The `>` prefix in `power: >0.125` indicates that the power value must be greater than 1/8W, and anything above that is fine as well.
