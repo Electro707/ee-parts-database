@@ -8,7 +8,7 @@ __pycache__
 *.db
 *.json
 # Sphinx Build files
-_build
-
-# My fork of the digikey API, used for some optional features
-e707_digikey_api
+**/_build
+# Python Build
+dist
+*.egg-info

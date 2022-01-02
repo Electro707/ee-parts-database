@@ -12,13 +12,13 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../'))
+sys.path.insert(0, os.path.abspath('..'))
 from e7epd import __version__
 
 # -- Project information -----------------------------------------------------
 
 project = 'E7EPD Database'
-copyright = '2021, Electro707'
+copyright = '2022, Electro707'
 author = 'Electro707'
 
 # The full version, including alpha/beta/rc tags

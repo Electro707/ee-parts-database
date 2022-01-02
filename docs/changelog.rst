@@ -1,5 +1,6 @@
 Changelog
 ==========================================
+The database specification will be separately tracked from the Python DB wrapper and CLI tool
 
 E7EPD Database Specification
 --------------------------------------------

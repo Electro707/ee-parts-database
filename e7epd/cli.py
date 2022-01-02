@@ -27,6 +27,7 @@ import sqlalchemy.future
 import sqlalchemy.orm
 # Local Modules Import
 import e7epd
+# Import of my fork of the digikey_api package
 try:
     from e707_digikey.v3.api import DigikeyAPI
 except ImportError:
@@ -760,7 +761,7 @@ def ask_for_database(config: CLIConfig):
         config.save_database_as_sqlite(db_id_name, file_name)
 
 
-if __name__ == "__main__":
+def main():
     c = CLIConfig()
     db_name = None
     while 1:
@@ -781,3 +782,7 @@ if __name__ == "__main__":
 
     c = CLI(config=c, database_connection=db_conn)
     c.main()
+
+
+if __name__ == "__main__":
+    main()

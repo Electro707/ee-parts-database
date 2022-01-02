@@ -11,10 +11,8 @@ from alembic.runtime.migration import MigrationContext
 from alembic.operations import Operations
 import typing
 
-import e707pd_spec as spec
+import e7epd.e707pd_spec as spec
 
-# Version of this backend
-__version__ = '0.4pre'
 # Version of the database spec
 database_spec_rev = '0.4'
 
