@@ -7,6 +7,8 @@
 import subprocess
 import logging
 import importlib
+
+import click
 import rich
 import rich.console
 import rich.panel
@@ -780,7 +782,12 @@ def ask_for_database(config: CLIConfig):
         config.save_database_as_sqlite(db_id_name, file_name)
 
 
-def main():
+@click.command()
+@click.option('-g', '--gui', is_flag=True)
+def main(gui):
+    if gui:
+        sys.exit(e7epd.run_ui())
+
     c = CLIConfig()
     db_name = None
     while 1:
