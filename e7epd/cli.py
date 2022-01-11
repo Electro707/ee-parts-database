@@ -279,12 +279,17 @@ class CLI:
 
     def _ask_manufacturer_part_number(self, part_db: e7epd.E7EPD.GenericPart, must_already_exist: bool = None) -> str:
         # Get a list of manufacturer part number to use as type hinting
+        mfr_list = []
         if must_already_exist is not None:
             try:
                 mfr_list = part_db.get_all_mfr_part_numb_in_db()
             except e7epd.EmptyInDatabase:
-                console.print("[red]No parts found in database[/]")
-                raise self._HelperFunctionExitError()
+                if must_already_exist is True:
+                    console.print("[red]No parts found in database[/]")
+                    raise self._HelperFunctionExitError()
+                else:
+                    mfr_list = []
+        if len(mfr_list) != 0:
             mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=mfr_list).ask()
         else:
             mfr_part_numb = questionary.text("Enter the manufacturer part number (or scan a Digikey barcode): ").ask()
@@ -366,9 +371,16 @@ class CLI:
                 elif spec['shows_as'] == 'percentage':
                     if '%' in inp:
                         inp = inp.replace('%', '')
+                    else:
+                        console.print("Inputted value is not a percentage")
+                        continue
                 elif '/' in inp and spec['input_type'] == 'float':
                     inp = inp.split('/')
-                    inp = float(inp[0]) / float(inp[1])
+                    try:
+                        inp = float(inp[0]) / float(inp[1])
+                    except ValueError:
+                        console.print("Inputted value is not a proper fraction")
+                        continue
 
                 try:
                     if spec['input_type'] == 'int':
@@ -386,6 +398,8 @@ class CLI:
         autocomplete_choices = None
         if db_name == 'manufacturer' and table_name == 'ic':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_manufacturers']
+        if db_name == 'manufacturer' and table_name == 'resistance':
+            autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_manufacturers']
         elif db_name == 'ic_type' and table_name == 'ic':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_types']
         elif db_name == 'cap_type' and table_name == 'capacitor':
