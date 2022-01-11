@@ -203,33 +203,30 @@ class CLI:
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
         self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
 
-    @staticmethod
-    def check_if_digikey_api_folder():
-        if os.path.isdir('e707_digikey_api'):
-            return True
-        return False
-
     def check_for_dk_api(self):
         if not self.is_digikey_available:
             console.print("[orange]API is not setup[/]")
-            console.print("[orange]Please install it with 'pip install git+git://github.com/Electro707/digikey-api.git@1fd3abec434b87a7c051bfa95487c2bfbd4a7651'[/]")
+            console.print("[orange]Please install it with 'pip install git+https://github.com/Electro707/digikey-api.git@1fd3abec434b87a7c051bfa95487c2bfbd4a7651'[/]")
+            raise self._NoDigikeyApiError
+
+    def check_for_db_config(self):
+        if self.digikey_api.needs_client_id() or self.digikey_api.needs_client_secret():
             raise self._NoDigikeyApiError
 
     def digikey_api_setup(self):
         self.digikey_api_conf = DKApiSQLConfig(sqlalchemy.orm.sessionmaker(self.db_engine)(), self.db_engine)
         self.digikey_api = DigikeyAPI(self.digikey_api_conf)
-        if self.digikey_api.needs_client_id() or self.digikey_api.needs_client_secret():
-            c_id = questionary.text("Enter the Digikey API client ID for the API: ").ask()
-            if c_id == '' or c_id is None:
-                console.print("[red]You need a client ID to use the digikey API[/]")
-                self.is_digikey_available = False
-                return
-            c_sec = questionary.password("Enter the Digikey API client secret for the API: ").ask()
-            if c_sec == '' or c_sec is None:
-                console.print("[red]You need a client ID to use the digikey API[/]")
-                self.is_digikey_available = False
-                return
-            self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
+
+    def digikey_api_config_setup(self):
+        c_id = questionary.text("Enter the Digikey API client ID for the API: ").ask()
+        if c_id == '' or c_id is None:
+            console.print("[red]You need a client ID to use the digikey API[/]")
+            return
+        c_sec = questionary.password("Enter the Digikey API client secret for the API: ").ask()
+        if c_sec == '' or c_sec is None:
+            console.print("[red]You need a client ID to use the digikey API[/]")
+            return
+        self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
 
     def scan_digikey_barcode(self, bc_code: str = None):
         """
@@ -248,6 +245,11 @@ class CLI:
             self.check_for_dk_api()
         except self._NoDigikeyApiError:
             console.print("[red]No Digikey API is available[/]")
+            raise KeyboardInterrupt()
+        try:
+            self.check_for_db_config()
+        except self._NoDigikeyApiError:
+            console.print("[red]Client Secret/Client ID are not setup. Do so from the main menu[/]")
             raise KeyboardInterrupt()
 
         if bc_code is None:
@@ -704,6 +706,8 @@ class CLI:
             to_do = questionary.select("What do you want to? ", choices=["Set ClientID and ClientSecret", self.return_formatted_choice]).ask()
             if to_do is None or to_do == "Return":
                 break
+            if to_do == 'Set ClientID and ClientSecret':
+                self.digikey_api_config_setup()
 
     def main(self):
         # Check DB version before doing anything

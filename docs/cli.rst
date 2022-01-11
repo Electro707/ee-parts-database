@@ -19,3 +19,19 @@ Usage
 ++++++++++++++++++++++++
 Coming Soon!
 
+
+Digikey Barcode Scanning
+++++++++++++++++++++++++
+The CLI application allows for scanning and inputting a Digikey 2D barcode that are included in a part's bag.
+To utilize this feature, my fork of `digikey-api` must be installed, which can be done with:
+
+.. code-block:: sh
+
+    pip install git+https://github.com/Electro707/digikey-api.git@1fd3abec434b87a7c051bfa95487c2bfbd4a7651
+
+Initially, you need to setup the DigikeyAPI with you client secret and client ID in the CLI for your Digikey Developer application which is done thru the main menu under the *'Digikey API Settings'* option.
+This application must have the *'Barcode'* and *'Product Information'* APIs enabled in Digikey's API settings.
+For more information on Digikey's APIs, see `https://developer.digikey.com/get_started <https://developer.digikey.com/get_started>`__.
+
+When asked for a manufacturer part number in the CLI application, you can scan a Digikey 2D barcode instead of typing
+in a manufacturer number. The input to the CLI application must be the scanned data.

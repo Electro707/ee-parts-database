@@ -63,6 +63,8 @@ Database Python DB Wrapper
       already has a database link, so modifying that with a ``commit`` command will make the changes
     * Added a ``commit`` and ``rollback`` function for when modifying a returned part linked to the database
     * Re-made the ``backup_db`` function to actually work. Dumps content as a JSON file
+* v0.4.1:
+    * No changes
 
 CLI
 -----------
@@ -86,6 +88,13 @@ CLI
 * v0.4:
     * Added ability to scan a Digikey barcode for the manufacturer part number
     * Added ability to edit a part's properties
+* v0.4.1:
+    * Fixed bug with an empty database where you could not enter a manufacturer part number
+    * Added more safety checks and exception handling around the user input function
+    * Changed the way the Digikey API got loaded and set as to not be intrusive
+    * Added docs for the Digikey barcode scanning feature
+    * Fixed the `Digikey API Settings` option in the main menu to allow changing the Client ID and Client Secret
+    * Added a __main__.py file to allow execution of `e7epd` as a Python module with `python -m e7epd`
 
 * TODOs:
     * Add option to import BOM file/CSV file
