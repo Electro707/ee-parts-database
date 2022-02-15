@@ -65,6 +65,9 @@ Database Python DB Wrapper
     * Re-made the ``backup_db`` function to actually work. Dumps content as a JSON file
 * v0.4.1:
     * No changes
+* v0.5(WIP):
+    * Added an overall `E7EPD` helper function to get all manufacturer part number
+
 
 CLI
 -----------
@@ -95,6 +98,10 @@ CLI
     * Added docs for the Digikey barcode scanning feature
     * Fixed the `Digikey API Settings` option in the main menu to allow changing the Client ID and Client Secret
     * Added a __main__.py file to allow execution of `e7epd` as a Python module with `python -m e7epd`
+* v0.5(WIP):
+    * Added more docs to existing functions to make it easier to intepret
+    * Made it so creating an existing part would prompt to instead add the part to the existing stock
+    * Added better messages about stock when adding or removing stock
 
 * TODOs:
     * Add option to import BOM file/CSV file

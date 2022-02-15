@@ -514,14 +514,30 @@ class E7EPD:
             c.session.commit()
 
     def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
+        """
+        Checks if a manufacturer part number is already in the database for all component types
+
+        Args:
+            mfr_part_numb: The manufacturer part number to look for
+
+        Returns: A tuple, the first index beingn the SQL ID, the second being the component GenericPart class of the part
+        """
         for c in self.components:
-            # temporary fix
-            if c == 'PCBs':
-                continue
             p = self.components[c].check_if_already_in_db_by_manuf(mfr_part_numb)
             if p is not None:
                 return p, self.components[c]
         return None, None
+
+    def get_all_mfr_part_numb_in_db(self):
+        """
+        Gets all stored manufacturer part numbers in the database
+
+        Returns: A list containing all manufacturer part number
+        """
+        all_mfg_list = []
+        for c in self.components:
+            all_mfg_list += self.components[c].get_all_mfr_part_numb_in_db()
+        return all_mfg_list
 
     def wipe_database(self):
         """

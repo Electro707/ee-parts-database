@@ -177,7 +177,9 @@ class CLI:
     cli_revision = e7epd.__version__
 
     class _HelperFunctionExitError(Exception):
-        pass
+        def __init__(self, data=None):
+            self.extra_data = data
+            super().__init__()
 
     class _NoDigikeyApiError(Exception):
         pass
@@ -308,11 +310,11 @@ class CLI:
         if must_already_exist is True:
             if mfr_part_numb not in mfr_list:
                 console.print("[red]Part must already exist in the database[/]")
-                raise self._HelperFunctionExitError()
+                raise self._HelperFunctionExitError(mfr_part_numb)
         elif must_already_exist is False:
             if mfr_part_numb in mfr_list:
                 console.print("[red]Part must not already exist in the database, which it does![/]")
-                raise self._HelperFunctionExitError()
+                raise self._HelperFunctionExitError(mfr_part_numb)
         return mfr_part_numb
 
     def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
@@ -424,6 +426,11 @@ class CLI:
         return autocomplete_choices
 
     def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
+        """
+        Prints all parts in a component database with filtering
+        Args:
+            part_db: The component database to use
+        """
         choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
         specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
         if specs_selected is None:
@@ -448,6 +455,14 @@ class CLI:
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
     def get_partdb_and_mfg(self, part_db: e7epd.E7EPD.GenericPart = None, mfg_must_exist: bool = None):
+        """
+        Helper function to get the manufacturer part number and component database
+        Args:
+            part_db: The selected component database. If not given, this function will ask the user to select one
+            mfg_must_exist: Whether the manufacturer part number must already exist in the database
+
+        Returns: A tupple of a selected component database and the manufacturer part number
+        """
         mfr_part_numb = None
         if part_db is None:
             try:
@@ -476,7 +491,10 @@ class CLI:
             if 'mfr_part_numb' in part_db.table_item_display_order:
                 try:
                     mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=False)
-                except self._HelperFunctionExitError:
+                except self._HelperFunctionExitError as e:
+                    if e.extra_data is not None:
+                        if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=False).ask():
+                            self.add_stock_to_part(part_db, e.extra_data)
                     return
                 new_part = part_db.part_type(mfr_part_numb=mfr_part_numb)
             else:
@@ -520,14 +538,18 @@ class CLI:
         else:
             console.print("Did not delete the part, it is safe.")
 
-    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None):
+    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None, mfr_part_numb: str = None):
         try:
-            try:
-                part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
-            except self._HelperFunctionExitError:
-                return
+            if mfr_part_numb is None or part_db is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
+                try:
+                    part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
+                except self._HelperFunctionExitError:
+                    return
+            console.print('There are {:d} parts of the selected component'.format(part_db.get_part_by_mfr_part_numb(mfr_part_numb).stock))
             while 1:
                 add_by = questionary.text("Enter how much you want to add this part by: ").ask()
+                if add_by is None:
+                    raise KeyboardInterrupt()
                 try:
                     add_by = int(add_by)
                 except ValueError:
@@ -546,8 +568,11 @@ class CLI:
                 part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
             except self._HelperFunctionExitError:
                 return
+            console.print('There are {:d} parts of the selected component'.format(part_db.get_part_by_mfr_part_numb(mfr_part_numb).stock))
             while 1:
                 remove_by = questionary.text("Enter how many components to remove from this part?: ").ask()
+                if remove_by is None:
+                    raise KeyboardInterrupt()
                 try:
                     remove_by = int(remove_by)
                 except ValueError:
