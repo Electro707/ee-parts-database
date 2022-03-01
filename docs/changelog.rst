@@ -67,6 +67,7 @@ Database Python DB Wrapper
     * No changes
 * v0.5(WIP):
     * Added an overall `E7EPD` helper function to get all manufacturer part number
+    * TODO: Add Projects
 
 
 CLI
@@ -99,9 +100,10 @@ CLI
     * Fixed the `Digikey API Settings` option in the main menu to allow changing the Client ID and Client Secret
     * Added a __main__.py file to allow execution of `e7epd` as a Python module with `python -m e7epd`
 * v0.5(WIP):
-    * Added more docs to existing functions to make it easier to intepret
+    * Added more docs to existing functions to make it easier to interpret
     * Made it so creating an existing part would prompt to instead add the part to the existing stock
     * Added better messages about stock when adding or removing stock
+    * Added PCBs as an option to add them
 
 * TODOs:
     * Add option to import BOM file/CSV file

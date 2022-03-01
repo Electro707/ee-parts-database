@@ -669,10 +669,14 @@ class CLI:
         Raises _ChooseComponentDigikeyBarcode: If instead of a component by itself a Digikey barcode is scanned
         Raises KeyboardInterrupt: If a component is not chosen
         """
-        component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [self.return_formatted_choice]).ask()
+        pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
+        component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [pcb_choice, self.return_formatted_choice]).ask()
         if component is None or component == 'Return':
             raise KeyboardInterrupt()
-        part_db = self.db.components[component]
+        elif component == 'PCBs':
+            part_db = self.db.pcbs
+        else:
+            part_db = self.db.components[component]
         return part_db
 
     def wipe_database(self):

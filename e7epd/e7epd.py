@@ -455,9 +455,9 @@ class E7EPD:
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
         self.db_conn = db_conn
-
+        # The config table in the database
         self.config = self.ConfigTable(sessionmaker(self.db_conn)(), self.db_conn)
-
+        # Individual parts in the database
         self.resistors = self.Resistance(sessionmaker(self.db_conn)())
         self.capacitors = self.Capacitors(sessionmaker(self.db_conn)())
         self.inductors = self.Inductors(sessionmaker(self.db_conn)())
@@ -471,6 +471,7 @@ class E7EPD:
         self.fuses = self.Fuses(sessionmaker(self.db_conn)())
         self.buttons = self.Buttons(sessionmaker(self.db_conn)())
         self.misc_cs = self.MiscComps(sessionmaker(self.db_conn)())
+        # PCBs, which aren't a component
         self.pcbs = self.PCBs(sessionmaker(self.db_conn)())
 
         self.components = {
@@ -488,6 +489,7 @@ class E7EPD:
             'Buttons': self.buttons,
             'Misc': self.misc_cs,
         }
+        """ A helper dictionary contaning all components (PCBs are not included)"""
 
         spec.GenericItem.metadata.create_all(self.db_conn)
         spec.PCB.metadata.create_all(self.db_conn)
