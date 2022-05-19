@@ -138,7 +138,7 @@ eedata_pcb_spec = [
     {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'board_name', 'showcase_name': 'Board Name', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
-    {'db_name': 'parts', 'showcase_name': 'Parts', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
+    {'db_name': 'parts', 'showcase_name': 'Parts', 'shows_as': 'normal', 'input_type': 'parts_json', 'required': True},
 ]
 eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'sub_rev', 'parts', 'storage', 'comments']
 

@@ -216,9 +216,10 @@ class E7EPD:
                     if getattr(part_info, item['db_name']) is None:
                         raise InputException("Did not assign key %s, but it's required" % item['db_name'])
             # If a part is already in a database, then raise an exception
-            duplicate_id = self.check_if_already_in_db(part_info)
-            if duplicate_id is False:
-                raise EmptyInDatabase()
+            if 'manufacturer' in self.part_type.__table__.columns.keys():
+                duplicate_id = self.check_if_already_in_db(part_info)
+                if duplicate_id is False:
+                    raise EmptyInDatabase()
             # Create a new part inside the database
             self._insert_part_in_db(part_info)
 
@@ -569,7 +570,7 @@ class E7EPD:
                 # Remove the capacitor's power column
                 op.drop_column(self.components['Capacitors'].table_name, 'power')
                 v = '0.3'
-            if v == '0.3':
+            if v == '0.3':   # From 0.3 -> 0.4
                 # Add the datasheet column for each component
                 for c in self.components:
                     op.add_column(self.components[c].table_name, Column('datasheet', Text))

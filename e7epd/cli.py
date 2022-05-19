@@ -281,20 +281,21 @@ class CLI:
             if spec['db_name'] == db_name:
                 return spec
 
-    def _ask_manufacturer_part_number(self, part_db: e7epd.E7EPD.GenericPart, must_already_exist: bool = None) -> str:
-        # Get a list of manufacturer part number to use as type hinting
-        mfr_list = []
-        if must_already_exist is not None:
-            try:
-                mfr_list = part_db.get_all_mfr_part_numb_in_db()
-            except e7epd.EmptyInDatabase:
-                if must_already_exist is True:
-                    console.print("[red]No parts found in database[/]")
-                    raise self._HelperFunctionExitError()
-                else:
-                    mfr_list = []
-        if len(mfr_list) != 0:
-            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=mfr_list).ask()
+    def _ask_manufacturer_part_number(self, existing_mfr_list: list = None, must_already_exist: bool = None) -> str:
+        """
+        Asks for the manufacturer part number. This function handles type hinting with a given list, checking if the mfgr
+        is a Digikey barcode scan, and raises an error if the entered part number is already in the database or not.
+
+        Args:
+            existing_mfr_list: A list of current manufacturer part numbers to typehint
+            must_already_exist: If a given part number must exist in the `existing_mfr_list` or must not exist
+
+        Returns: The entered manufacturer part number
+        """
+        if existing_mfr_list is None and must_already_exist is not None:
+            raise UserWarning("Internal Error: existing_mfr_list is None but must_already_exist isn't")
+        if existing_mfr_list is not None:
+            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=existing_mfr_list).ask()
         else:
             mfr_part_numb = questionary.text("Enter the manufacturer part number (or scan a Digikey barcode): ").ask()
         if mfr_part_numb == '' or mfr_part_numb is None:
@@ -308,14 +309,69 @@ class CLI:
             except KeyboardInterrupt:
                 raise self._HelperFunctionExitError()
         if must_already_exist is True:
-            if mfr_part_numb not in mfr_list:
+            if mfr_part_numb not in existing_mfr_list:
                 console.print("[red]Part must already exist in the database[/]")
                 raise self._HelperFunctionExitError(mfr_part_numb)
         elif must_already_exist is False:
-            if mfr_part_numb in mfr_list:
+            if mfr_part_numb in existing_mfr_list:
                 console.print("[red]Part must not already exist in the database, which it does![/]")
                 raise self._HelperFunctionExitError(mfr_part_numb)
         return mfr_part_numb
+
+    def _ask_for_pcb_parts(self) -> list:
+        """
+        Called when wanting to input parts for a PCB
+        """
+        all_parts_dict = []
+        while 1:
+            new_part = {'part': {}}
+            # Ask for the part itself, what it is and get the type
+            specific_part = questionary.select("Is this a specific or generic part?",  choices=["Specific", "Generic", "Done"]).ask()
+            if specific_part is None:
+                raise self._HelperFunctionExitError()
+            elif specific_part == "Done":
+                console.print("Done adding parts")
+                break
+            elif specific_part == "Specific":
+                mgf = self._ask_manufacturer_part_number(self.db.get_all_mfr_part_numb_in_db(), True)
+                _, part_db = self.db.check_if_already_in_db_by_manuf(mgf)
+                new_part['part']['mfr_part_numb'] = mgf
+                new_part['comp_type'] = part_db.table_name
+            elif specific_part == "Generic":
+                generic_part_db = self.choose_component()
+                new_part['comp_type'] = generic_part_db.table_name
+                for spec_db_name in generic_part_db.table_item_display_order:
+                    if spec_db_name in ['stock', 'mfr_part_numb', 'manufacturer', 'storage', 'comments', 'datasheet']:
+                        continue
+                    # Select an autocomplete choice, or None if there isn't any
+                    autocomplete_choices = self.get_autocomplete_list(spec_db_name, generic_part_db.table_name)
+                    # Get the spec
+                    spec = self.find_spec_by_db_name(generic_part_db.table_item_spec, spec_db_name)
+                    if spec is None:
+                        console.print(
+                            "[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
+                        raise self._HelperFunctionExitError()
+                    # Ask the user for that property
+                    try:
+                        new_part['part'][spec_db_name] = self.ask_for_spec_input(generic_part_db, spec, autocomplete_choices)
+                    except KeyboardInterrupt:
+                        console.print("Did not add part")
+                        raise self._HelperFunctionExitError()
+            else:
+                console.print("[red]Invalid Choice![/]")
+                continue
+            # Ask for quantity
+            try:
+                new_part['quantity'] = int(questionary.text("Enter quantity of this part used on this PCB:").ask())
+            except ValueError:
+                console.print("[red]Invalid quantity[/]")
+                continue
+            all_parts_dict.append(new_part)
+
+        if len(all_parts_dict) == 0:
+            console.print("Added nothing for parts")
+            raise self._HelperFunctionExitError()
+        return all_parts_dict
 
     def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
@@ -342,11 +398,17 @@ class CLI:
         parts_list = part_db.get_all_parts()
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
-    def ask_for_spec_input(self, part_db: e7epd.E7EPD.GenericPart, spec: dict, choices: list = None) -> str:
+    def ask_for_spec_input(self, part_db: e7epd.E7EPD.GenericPart, spec: dict, choices: list = None):
+        if spec['input_type'] == 'parts_json':  # We are handling adding a part, which is seperate from a value
+            try:
+                inp = self._ask_for_pcb_parts()
+            except self._HelperFunctionExitError:
+                raise KeyboardInterrupt()
+            return inp
         while 1:
             if spec['db_name'] == 'mfr_part_numb':
                 try:
-                    inp = self._ask_manufacturer_part_number(part_db)
+                    inp = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db())
                 except self._HelperFunctionExitError:
                     raise KeyboardInterrupt()
             else:
@@ -472,7 +534,7 @@ class CLI:
         # Ask for manufacturer part number first, and make sure there are no conflicts
         if mfr_part_numb is None:
             try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=mfg_must_exist)
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=mfg_must_exist)
             except self._HelperFunctionExitError:
                 raise self._HelperFunctionExitError()
         return part_db, mfr_part_numb
@@ -480,7 +542,6 @@ class CLI:
     def add_new_part(self, part_db: e7epd.E7EPD.GenericPart = None):
         """ Function gets called when a part is to be added """
         try:
-
             if part_db is None:
                 try:
                     part_db = self.choose_component()
@@ -490,7 +551,7 @@ class CLI:
                     return
             if 'mfr_part_numb' in part_db.table_item_display_order:
                 try:
-                    mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=False)
+                    mfr_part_numb = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=False)
                 except self._HelperFunctionExitError as e:
                     if e.extra_data is not None:
                         if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=False).ask():
@@ -510,7 +571,7 @@ class CLI:
                 if spec is None:
                     console.print("[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
                     return
-                # Ask the suer for that property
+                # Ask the user for that property
                 try:
                     setattr(new_part, spec_db_name, self.ask_for_spec_input(part_db, spec, autocomplete_choices))
                 except KeyboardInterrupt:
@@ -528,7 +589,7 @@ class CLI:
             part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
         except self._HelperFunctionExitError:
             return
-        if questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False, default=False).ask():
+        if questionary.confirm("ARE YOU SURE...AGAIN???", auto_enter=False, default=False).ask():
             try:
                 part_db.delete_part_by_mfr_number(mfr_part_numb)
             except e7epd.EmptyInDatabase:
@@ -599,7 +660,7 @@ class CLI:
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db, must_already_exist=True)
+                mfr_part_numb = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=True)
             except self._HelperFunctionExitError:
                 return
             part = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
