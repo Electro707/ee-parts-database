@@ -9,12 +9,13 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, Float, String, Text, JSON
 from alembic.runtime.migration import MigrationContext
 from alembic.operations import Operations
+from engineering_notation import EngNumber
 import typing
 
 import e7epd.e707pd_spec as spec
 
 # Version of the database spec
-database_spec_rev = '0.4'
+database_spec_rev = '0.5'
 
 
 class InputException(Exception):
@@ -40,6 +41,9 @@ class NegativeStock(Exception):
     def __init__(self, amount_to_make_zero):
         self.amount_to_make_zero = amount_to_make_zero
         super().__init__('Stock will go to negative')
+
+
+ComponentTypeVar = typing.TypeVar('ComponentTypeVar', bound=spec.GenericItem)
 
 
 class E7EPD:
@@ -87,13 +91,13 @@ class E7EPD:
         def store_current_db_version(self):
             self.store_info('db_ver', database_spec_rev)
 
-    class GenericPart:
+    class GenericItem(typing.Generic[ComponentTypeVar]):
         """ This is a generic part constructor, which other components (like Resistors) will base off of """
         def __init__(self, session: sqlalchemy.orm.Session):
             self.session = session
             self.table_item_spec: list
             self.table_item_display_order: list
-            self.part_type: spec.GenericItem
+            self.part_type: ComponentTypeVar
 
             if not hasattr(self, 'table_item_spec'):
                 self.table_item_spec = None
@@ -105,7 +109,190 @@ class E7EPD:
             self.table_name = self.part_type.__tablename__
             self.log = logging.getLogger(self.part_type.__tablename__)
 
-        def check_if_already_in_db(self, part_info: spec.GenericItem):
+        # def get_part_by_id(self, sql_id: int) -> spec.GenericItem:
+        #     """
+        #         Function that returns parts parameters by part ID
+        #
+        #         Args:
+        #             sql_id (int): Part ID in the SQL table
+        #
+        #         Returns:
+        #             The part's item class
+        #
+        #         Raises:
+        #             EmptyInDatabase: If the SQL ID does not exist in the database
+        #     """
+        #     d = self.session.query(self.part_type).filter_by(id=sql_id).all()
+        #     if len(d) == 0:
+        #         raise EmptyInDatabase()
+        #     elif len(d) == 1:
+        #         return d[0]
+        #     else:
+        #         # TODO: Add exception, as having more than 1 of the same ID is impossible
+        #         pass
+
+        def create_part(self, part_info: ComponentTypeVar):
+            """
+                Function to create a part for the given info
+
+                Args:
+                     part_info (GenericItem): The part item class to add to the database
+            """
+            # Check if key already exists in table
+            for item in self.table_item_spec:
+                if item['required'] is True:
+                    if getattr(part_info, item['db_name']) is None:
+                        raise InputException("Did not assign key %s, but it's required" % item['db_name'])
+            # Create a new part inside the database
+            self._insert_part_in_db(part_info)
+
+        def _insert_part_in_db(self, part_info: ComponentTypeVar):
+            """ Internal function to insert a part into the database """
+            # Run an insert command into the database
+            self.log.debug('Inserting %s into database' % part_info)
+            self.session.add(part_info)
+            self.session.commit()
+
+        # def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int) -> int:
+        #     """ Appends stock to a part by the manufacturer part number
+        #
+        #     Args:
+        #         mfr_part_numb (str): The manufacturer number to add the stock to
+        #         append_by: How much stock to add
+        #
+        #     Returns:
+        #         The new stock of the part after the appending
+        #
+        #     Raises:
+        #         EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+        #     """
+        #     part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+        #     part.stock += append_by
+        #     self.session.commit()
+        #     return part.stock
+
+        # Deprecated as it should be done thru a returned querry then substracting the amount there
+        # def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int) -> int:
+        #     """ Removes stock from a part by the manufacturer part number
+        #
+        #     Args:
+        #         mfr_part_numb (str): The manufacturer number to add the stock to
+        #         remove_by: How much stock to remove from the part
+        #
+        #     Returns:
+        #         The new stock of the part after removal
+        #
+        #     Raises:
+        #         EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+        #     """
+        #     part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+        #     if part.stock - remove_by < 0:
+        #         raise NegativeStock(part.stock)
+        #     part.stock -= remove_by
+        #     self.session.commit()
+        #     return part.stock
+
+        def get_all_parts(self) -> typing.Iterable[ComponentTypeVar]:
+            """ Get all parts in the database
+
+                Returns:
+                    EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+            """
+            return self.session.query(self.part_type).all()
+
+        def is_database_empty(self):
+            """ Checks if the database is empty
+
+            Returns:
+                True if the database is empty, False if not
+            """
+            d = self.session.query(self.part_type).count()
+            self.log.debug('Number of parts in database for %s: %s' % (self.table_name, d))
+            if d == 0:
+                return True
+            return False
+
+        def commit(self):
+            """
+                Commits any changes done to part(s)
+            """
+            self.session.commit()
+
+        def rollback(self):
+            """
+                Roll back changes done to part(s)
+            """
+            self.session.rollback()
+
+    class GenericComponent(GenericItem[ComponentTypeVar]):
+        def get_all_mfr_part_numb_in_db(self) -> list:
+            """ Get all manufaturer part numbers as a list
+
+            Returns:
+                A list of all manufacturer part numbers in the database
+            """
+            d = self.session.query(self.part_type).with_entities(self.part_type.mfr_part_numb).all()
+            if len(d) == 0:
+                raise EmptyInDatabase()
+            return [p.mfr_part_numb for p in d]
+
+        def get_sorted_parts(self, search_filter: list):
+            q = self.session.query(self.part_type)
+
+            if q.count() == 0:
+                raise EmptyInDatabase()
+
+            filter_const = []
+            for item in search_filter:
+                if 'op' in item:
+                    if item['op'] == '>':
+                        filter_const.append(getattr(self.part_type, item['db_name']) > item['val'])
+                    elif item['op'] == '>=':
+                        filter_const.append(getattr(self.part_type, item['db_name']) >= item['val'])
+                    elif item['op'] == '<':
+                        filter_const.append(getattr(self.part_type, item['db_name']) < item['val'])
+                    elif item['op'] == '<=':
+                        filter_const.append(getattr(self.part_type, item['db_name']) <= item['val'])
+                    elif item['op'] == '==':
+                        filter_const.append(getattr(self.part_type, item['db_name']) == item['val'])
+                    else:
+                        raise UserWarning("Invalid Operator %s" % item['op'])
+                else:
+                    filter_const.append(getattr(self.part_type, item['db_name']) == item['val'])
+
+            d = q.filter(*filter_const).all()
+            return d
+
+        def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> ComponentTypeVar:
+            """
+                Function that returns parts parameters by part ID
+
+                Args:
+                    mfr_part_numb (str): The part's manufacturer part number
+
+                Returns:
+                    The part's item class
+
+                Raises:
+                    EmptyInDatabase: If the SQL ID does not exist in the database
+            """
+            d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).one()
+            return d
+
+        def delete_part_by_mfr_number(self, mfr_part_numb: str):
+            """
+                Function to delete a part by the manufacturer part number
+
+                Args:
+                    mfr_part_numb: The manufacturer part number of the part to delete
+
+                Raises:
+                     EmptyInDatabase: Raises this exception if there is no part in the database with that manufacturer part number
+            """
+            self.log.debug("Deleting part %s" % mfr_part_numb)
+            self.session.delete(self.get_part_by_mfr_part_numb(mfr_part_numb))
+
+        def check_if_already_in_db(self, part_info: ComponentTypeVar):
             """ Checks if a given part is already in the database
                 Currently it's done through checking for a match with the manufacturer part number
 
@@ -145,261 +332,7 @@ class E7EPD:
             else:
                 raise InputException("Did not give a manufacturer part number")
 
-        def get_part_by_id(self, sql_id: int) -> spec.GenericItem:
-            """
-                Function that returns parts parameters by part ID
-
-                Args:
-                    sql_id (int): Part ID in the SQL table
-
-                Returns:
-                    The part's item class
-
-                Raises:
-                    EmptyInDatabase: If the SQL ID does not exist in the database
-            """
-            d = self.session.query(self.part_type).filter_by(id=sql_id).all()
-            if len(d) == 0:
-                raise EmptyInDatabase()
-            elif len(d) == 1:
-                return d[0]
-            else:
-                # TODO: Add exception, as having more than 1 of the same ID is impossible
-                pass
-
-        def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> spec.GenericItem:
-            """
-                Function that returns parts parameters by part ID
-
-                Args:
-                    mfr_part_numb (str): The part's manufacturer part number
-
-                Returns:
-                    The part's item class
-
-                Raises:
-                    EmptyInDatabase: If the SQL ID does not exist in the database
-            """
-            d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).all()
-            if len(d) == 0:
-                raise EmptyInDatabase()
-            elif len(d) == 1:
-                return d[0]
-            else:
-                # TODO: Add exception, as having more than 1 of the same ID is impossible
-                raise UserWarning()
-
-        def delete_part_by_mfr_number(self, mfr_part_numb: str):
-            """
-                Function to delete a part by the manufacturer part number
-
-                Args:
-                    mfr_part_numb: The manufacturer part number of the part to delete
-
-                Raises:
-                     EmptyInDatabase: Raises this exception if there is no part in the database with that manufacturer part number
-            """
-            self.log.debug("Deleting part %s" % mfr_part_numb)
-            self.session.delete(self.get_part_by_mfr_part_numb(mfr_part_numb))
-
-        def create_part(self, part_info: spec.GenericItem):
-            """
-                Function to create a part for the given info
-
-                Args:
-                     part_info (GenericItem): The part item class to add to the database
-            """
-            # Check if key already exists in table
-            for item in self.table_item_spec:
-                if item['required'] is True:
-                    # if part_info[item['db_name']] is None:
-                    if getattr(part_info, item['db_name']) is None:
-                        raise InputException("Did not assign key %s, but it's required" % item['db_name'])
-            # If a part is already in a database, then raise an exception
-            if 'manufacturer' in self.part_type.__table__.columns.keys():
-                duplicate_id = self.check_if_already_in_db(part_info)
-                if duplicate_id is False:
-                    raise EmptyInDatabase()
-            # Create a new part inside the database
-            self._insert_part_in_db(part_info)
-
-        def _insert_part_in_db(self, part_info: spec.GenericItem):
-            """ Internal function to insert a part into the database """
-            # Run an insert command into the database
-            self.log.debug('Inserting %s into database' % part_info)
-            self.session.add(part_info)
-            self.session.commit()
-
-        def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int) -> int:
-            """ Appends stock to a part by the manufacturer part number
-
-            Args:
-                mfr_part_numb (str): The manufacturer number to add the stock to
-                append_by: How much stock to add
-
-            Returns:
-                The new stock of the part after the appending
-
-            Raises:
-                EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
-            """
-            part = self.get_part_by_mfr_part_numb(mfr_part_numb)
-            part.stock += append_by
-            self.session.commit()
-            return part.stock
-
-        def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int) -> int:
-            """ Removes stock from a part by the manufacturer part number
-
-            Args:
-                mfr_part_numb (str): The manufacturer number to add the stock to
-                remove_by: How much stock to remove from the part
-
-            Returns:
-                The new stock of the part after removal
-
-            Raises:
-                EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
-            """
-            part = self.get_part_by_mfr_part_numb(mfr_part_numb)
-            if part.stock - remove_by < 0:
-                raise NegativeStock(part.stock)
-            part.stock -= remove_by
-            self.session.commit()
-            return part.stock
-
-        def get_all_parts(self) -> typing.List[spec.GenericItem]:
-            """ Get all parts in the database
-
-                Returns:
-                    EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
-            """
-            return self.session.query(self.part_type).all()
-
-        def get_all_mfr_part_numb_in_db(self) -> list:
-            """ Get all manufaturer part numbers as a list
-
-            Returns:
-                A list of all manufacturer part numbers in the database
-            """
-            d = self.session.query(self.part_type).all()
-            if len(d) == 0:
-                raise EmptyInDatabase()
-            return [p.mfr_part_numb for p in d]
-
-        def get_sorted_parts(self, part_filter: spec.GenericItem):
-            q = self.session.query(self.part_type)
-
-            if q.count() == 0:
-                raise EmptyInDatabase()
-
-            filter_const = {}
-            for i, item in enumerate(self.table_item_spec):
-                if item['db_name'] not in part_filter.__dict__:
-                    continue
-                if getattr(part_filter, item['db_name']) is None:
-                    continue
-                filter_const[item['db_name']] = getattr(part_filter, item['db_name'])
-
-            d = q.filter_by(**filter_const)
-            return d
-
-        def is_database_empty(self):
-            """ Checks if the database is empty
-
-            Returns:
-                True if the database is empty, False if not
-            """
-            d = self.session.query(self.part_type).count()
-            self.log.debug('Number of parts in database for %s: %s' % (self.table_name, d))
-            if d == 0:
-                return True
-            return False
-
-        def commit(self):
-            """
-                Commits any changes done to part(s)
-            """
-            self.session.commit()
-
-        def rollback(self):
-            """
-                Roll back changes done to part(s)
-            """
-            self.session.rollback()
-
-    class Resistance(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_resistors_spec
-            self.table_item_display_order = spec.eedata_resistor_display_order
-            self.part_type = spec.Resistor
-
-            super().__init__(session)
-
-    class Capacitors(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_capacitor_spec
-            self.table_item_display_order = spec.eedata_capacitor_display_order
-            self.part_type = spec.Capacitor
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Inductors(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_inductor_spec
-            self.table_item_display_order = spec.eedata_inductor_display_order
-            self.part_type = spec.Inductor
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class ICs(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_ic_spec
-            self.table_item_display_order = spec.eedata_ic_display_order
-            self.part_type = spec.IC
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Diodes(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_diode_spec
-            self.table_item_display_order = spec.eedata_diode_display_order
-            self.part_type = spec.Diode
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Crystals(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_crystal_spec
-            self.table_item_display_order = spec.eedata_crystal_display_order
-            self.part_type = spec.Crystal
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class MOSFETs(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_mosfet_spec
-            self.table_item_display_order = spec.eedata_mosfet_display_order
-            self.part_type = spec.MOSFET
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class BJTs(GenericPart):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_bjt_spec
-            self.table_item_display_order = spec.eedata_bjt_display_order
-            self.part_type = spec.BJT
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class PCBs(GenericPart):
+    class PCBs(GenericComponent[spec.PCB]):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_pcb_spec
             self.table_item_display_order = spec.eedata_pcb_display_order
@@ -408,7 +341,129 @@ class E7EPD:
 
             super().__init__(session)
 
-    class Connectors(GenericPart):
+        def get_all_boardnames(self) -> list:
+            d = self.get_all_parts()
+            return [i.board_name for i in d]
+
+        def get_revision_per_boardname(self, board_name: str) -> list:
+            d = self.session.query(self.part_type).filter(self.part_type.board_name == board_name).with_entities(self.part_type.rev).all()
+            return [i.rev for i in d]
+
+        def get_by_boardname_and_rev(self, board_name: str, rev: str) -> ComponentTypeVar:
+            d = self.session.query(self.part_type).filter(self.part_type.board_name == board_name, self.part_type.rev == rev).one()
+            return d
+
+    class Resistance(GenericComponent[spec.Resistor]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_resistors_spec
+            self.table_item_display_order = spec.eedata_resistor_display_order
+            self.part_type = spec.Resistor
+
+            super().__init__(session)
+
+        @staticmethod
+        def print_formatted_from_spec(spec_dict: dict) -> str:
+            def get_value_and_operator_from_spec(spec_name: str) -> [typing.Union[float, int, None], typing.Union[None, str]]:
+                if spec_name not in spec_dict:
+                    return None, None
+                if (spec_dict[spec_name]) == dict:
+                    return spec_dict[spec_name]['val'], spec_dict[spec_name]['op']
+                else:
+                    return spec_dict[spec_name], None
+            """
+            Prints out a nice string depending on the given spec_list
+
+            Args:
+                spec_list: A list of dictionary containing the spec list in the format of for example
+                           [{'db_name': 'resistance': 'val': 1000}, {'db_name': 'tolerance': 'val': 0.1, 'op': '>'}].
+                           The db_name of `resistance` is required
+
+            Returns: A nicely formatted string describing the resistor, in the example above it will return `A 1k resistor with >1% tolerance`
+            """
+            resistance, op = get_value_and_operator_from_spec('resistance')
+            ret_str = "A {:} resistor".format(str(EngNumber(resistance)))
+
+            tolerance, op = get_value_and_operator_from_spec('tolerance')
+            if tolerance is not None:
+                ret_str += " with a "
+                if op is not None:
+                    ret_str += op
+                ret_str += "{:.1f}% tolerance".format(tolerance)
+
+            power, op = get_value_and_operator_from_spec('power')
+            if power is not None:
+                ret_str += " with "
+                if op is not None:
+                    ret_str += op
+                ret_str += "{:.1f}%".format(power)
+                ret_str += "W capability"
+
+            return ret_str
+
+    class Capacitors(GenericComponent[spec.Capacitor]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_capacitor_spec
+            self.table_item_display_order = spec.eedata_capacitor_display_order
+            self.part_type = spec.Capacitor
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class Inductors(GenericComponent[spec.Inductor]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_inductor_spec
+            self.table_item_display_order = spec.eedata_inductor_display_order
+            self.part_type = spec.Inductor
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class ICs(GenericComponent[spec.IC]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_ic_spec
+            self.table_item_display_order = spec.eedata_ic_display_order
+            self.part_type = spec.IC
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class Diodes(GenericComponent[spec.Diode]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_diode_spec
+            self.table_item_display_order = spec.eedata_diode_display_order
+            self.part_type = spec.Diode
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class Crystals(GenericComponent[spec.Crystal]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_crystal_spec
+            self.table_item_display_order = spec.eedata_crystal_display_order
+            self.part_type = spec.Crystal
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class MOSFETs(GenericComponent[spec.MOSFET]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_mosfet_spec
+            self.table_item_display_order = spec.eedata_mosfet_display_order
+            self.part_type = spec.MOSFET
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class BJTs(GenericComponent[spec.BJT]):
+        def __init__(self, session: sqlalchemy.orm.Session):
+            self.table_item_spec = spec.eedata_bjt_spec
+            self.table_item_display_order = spec.eedata_bjt_display_order
+            self.part_type = spec.BJT
+            self.log = logging.getLogger(self.part_type.__tablename__)
+
+            super().__init__(session)
+
+    class Connectors(GenericComponent[spec.Connector]):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_connector_spec
             self.table_item_display_order = spec.eedata_connector_display_order
@@ -417,7 +472,7 @@ class E7EPD:
 
             super().__init__(session)
 
-    class LEDs(GenericPart):
+    class LEDs(GenericComponent[spec.LED]):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_led_spec
             self.table_item_display_order = spec.eedata_led_display_order
@@ -426,7 +481,7 @@ class E7EPD:
 
             super().__init__(session)
 
-    class Fuses(GenericPart):
+    class Fuses(GenericComponent[spec.Fuse]):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_fuse_spec
             self.table_item_display_order = spec.eedata_fuse_display_order
@@ -435,7 +490,7 @@ class E7EPD:
 
             super().__init__(session)
 
-    class Buttons(GenericPart):
+    class Buttons(GenericComponent[spec.Button]):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_button_spec
             self.table_item_display_order = spec.eedata_button_display_order
@@ -444,7 +499,7 @@ class E7EPD:
 
             super().__init__(session)
 
-    class MiscComps(GenericPart):
+    class MiscComps(GenericComponent[spec.MiscComp]):
         def __init__(self, session: sqlalchemy.orm.Session):
             self.table_item_spec = spec.eedata_misc_spec
             self.table_item_display_order = spec.eedata_misc_display_order
@@ -490,7 +545,7 @@ class E7EPD:
             'Buttons': self.buttons,
             'Misc': self.misc_cs,
         }
-        """ A helper dictionary contaning all components (PCBs are not included)"""
+        """ A helper dictionary containing all components (PCBs are not included)"""
 
         spec.GenericItem.metadata.create_all(self.db_conn)
         spec.PCB.metadata.create_all(self.db_conn)
@@ -515,6 +570,11 @@ class E7EPD:
         """
         for c in self.components.values():
             c.session.commit()
+
+    def get_component_by_table_name(self, table_name: str):
+        for c in self.components:
+            if self.components[c].table_name == table_name:
+                return c, self.components[c]
 
     def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
         """
@@ -541,6 +601,12 @@ class E7EPD:
         for c in self.components:
             all_mfg_list += self.components[c].get_all_mfr_part_numb_in_db()
         return all_mfg_list
+
+    def get_all_component_part_number(self) -> dict:
+        all_mfr_list = {}
+        for c in self.components:
+            all_mfr_list[c] = self.components[c].get_all_mfr_part_numb_in_db()
+        return all_mfr_list
 
     def wipe_database(self):
         """
@@ -576,6 +642,11 @@ class E7EPD:
                     op.add_column(self.components[c].table_name, Column('datasheet', Text))
                 op.alter_column(self.pcbs.table_name, 'project_name', type_=String(spec.default_string_len), new_column_name='board_name')
                 op.add_column(self.pcbs.table_name, Column('parts', JSON, nullable=False))
+            if v == '0.4':
+                for c in self.components:
+                    op.drop_column(self.components[c].table_name, 'id')
+                    op.create_primary_key(None, self.components[c].table_name, ['mfr_part_numb'])
+                    op.add_column(self.components[c].table_name, Column('user', String(spec.default_string_len)))
             self.config.store_current_db_version()
 
     def is_latest_database(self) -> bool:

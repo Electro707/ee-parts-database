@@ -5,14 +5,14 @@ default_string_len = 30
 
 
 class Base(object):
-    id = Column(Integer, primary_key=True)
+    mfr_part_numb = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False)
     stock = Column(Integer, nullable=False)
     manufacturer = Column(String(default_string_len))
     storage = Column(String(default_string_len))
-    mfr_part_numb = Column(String(default_string_len), nullable=False)
     package = Column(String(default_string_len))
     comments = Column(Text)
     datasheet = Column(Text)
+    user = Column(String(default_string_len))
 
 
 GenericItem = declarative_base(cls=Base)
@@ -33,7 +33,9 @@ eedata_generic_spec = [
     {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'datasheet', 'showcase_name': 'Datasheet', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
+    {'db_name': 'user', 'showcase_name': 'User', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
 ]
+eedata_generic_items = [i['db_name'] for i in eedata_generic_spec]
 
 eedata_resistors_spec = eedata_generic_spec + [
     {'db_name': 'resistance', 'showcase_name': 'Resistance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
@@ -134,13 +136,12 @@ eedata_misc_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'package'
 eedata_pcb_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
     {'db_name': 'rev', 'showcase_name': 'Revision', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'sub_rev', 'showcase_name': 'Sub-Revision', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'board_name', 'showcase_name': 'Board Name', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
     {'db_name': 'parts', 'showcase_name': 'Parts', 'shows_as': 'normal', 'input_type': 'parts_json', 'required': True},
 ]
-eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'sub_rev', 'parts', 'storage', 'comments']
+eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'parts', 'storage', 'comments']
 
 
 class Resistor(GenericItem):
@@ -261,7 +262,6 @@ class PCB(_AlchemyDeclarativeBase):
     storage = Column(String(default_string_len))
     board_name = Column(String(default_string_len), nullable=False)
     rev = Column(String(default_string_len), nullable=False)
-    sub_rev = Column(String(default_string_len))
     parts = Column(JSON, nullable=False)
 
 

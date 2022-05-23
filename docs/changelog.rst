@@ -5,6 +5,9 @@ The database specification will be separately tracked from the Python DB wrapper
 E7EPD Database Specification
 --------------------------------------------
 
+.. role:: strike
+    :class: strike
+
 * v0.05:
     * Initial Release
 * v0.1:
@@ -33,6 +36,9 @@ E7EPD Database Specification
     * Added datasheet column for all components
     * Removal of ``project_name`` from the PCB table and replaced it ``board_name``
     * Added a ``parts`` JSON list for the PCB table, allowing parts to be cross-referenced per board
+* v0.5(WIP):
+    * Changed the SQL primary key for all components to ``mfr_part_numb``, and removed the ``id`` column
+    * Added a ``user`` column for all components
 
 Database Python DB Wrapper
 --------------------------------------------
@@ -67,7 +73,7 @@ Database Python DB Wrapper
     * No changes
 * v0.5(WIP):
     * Added an overall `E7EPD` helper function to get all manufacturer part number
-    * TODO: Add Projects
+    * Separated the ``PCB`` class into it's own compared to components with some different function calls
 
 
 CLI
@@ -104,8 +110,9 @@ CLI
     * Made it so creating an existing part would prompt to instead add the part to the existing stock
     * Added better messages about stock when adding or removing stock
     * Added PCBs as an option to add them
+    * Added a menu to search the current inventory against a PCB to see if one can be built
 
 * TODOs:
     * Add option to import BOM file/CSV file
-    * Add ability to "interact" with the PCB table
-    * Add cross-coerelation between a PCB's parts and parts in the database
+    * :strike:`Add ability to "interact" with the PCB table`
+    * :strike:`Add cross-coerelation between a PCB's parts and parts in the database`

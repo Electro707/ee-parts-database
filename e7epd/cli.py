@@ -25,7 +25,9 @@ import json
 import sqlalchemy
 import sqlalchemy.future
 import sqlalchemy.orm
+import sqlalchemy.exc
 import pkg_resources
+import re
 # Local Modules Import
 import e7epd
 # Import of my fork of the digikey_api package
@@ -353,7 +355,8 @@ class CLI:
                         raise self._HelperFunctionExitError()
                     # Ask the user for that property
                     try:
-                        new_part['part'][spec_db_name] = self.ask_for_spec_input(generic_part_db, spec, autocomplete_choices)
+                        val, op = self.ask_for_spec_input_with_operator(generic_part_db, spec, autocomplete_choices)
+                        new_part['part'][spec_db_name] = {'val': val, 'op': op}
                     except KeyboardInterrupt:
                         console.print("Did not add part")
                         raise self._HelperFunctionExitError()
@@ -366,6 +369,7 @@ class CLI:
             except ValueError:
                 console.print("[red]Invalid quantity[/]")
                 continue
+            new_part['quantity'] = questionary.text("Enter the designator/reference:").ask()
             all_parts_dict.append(new_part)
 
         if len(all_parts_dict) == 0:
@@ -373,7 +377,7 @@ class CLI:
             raise self._HelperFunctionExitError()
         return all_parts_dict
 
-    def print_parts_list(self, part_db: e7epd.E7EPD.GenericPart, parts_list: list[e7epd.spec.GenericItem], title):
+    def print_parts_list(self, part_db: e7epd.E7EPD.GenericComponent, parts_list: list[e7epd.spec.GenericItem], title):
         """ Function is called when the user wants to print out all parts """
         ta = rich.table.Table(title=title)
         for spec_db_name in part_db.table_item_display_order:
@@ -394,17 +398,59 @@ class CLI:
             ta.add_row(*row)
         console.print(ta)
 
-    def print_all_parts(self, part_db: e7epd.E7EPD.GenericPart):
+    def print_all_parts(self, part_db: e7epd.E7EPD.GenericComponent):
         parts_list = part_db.get_all_parts()
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
-    def ask_for_spec_input(self, part_db: e7epd.E7EPD.GenericPart, spec: dict, choices: list = None):
+    def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericComponent):
+        """
+        Prints all parts in a component database with filtering
+        Args:
+            part_db: The component database to use
+        """
+        choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
+        specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
+        if specs_selected is None:
+            return
+        if len(specs_selected) == 0:
+            console.print("[red]Must choose something[/]")
+            return
+        search_filter = []
+        for spec in specs_selected:
+            autocomplete_choices = self.get_autocomplete_list(spec['db_name'], part_db.table_name)
+            try:
+                inp, op = self.ask_for_spec_input_with_operator(part_db, spec, autocomplete_choices)
+            except KeyboardInterrupt:
+                console.print("Canceled part lookup")
+                return
+            search_filter.append({'db_name': spec['db_name'], 'val': inp, 'op': op})
+        try:
+            parts_list = part_db.get_sorted_parts(search_filter)
+        except e7epd.EmptyInDatabase:
+            console.print("[red]No filtered parts in the database[/]")
+            return
+        self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
+
+    def print_parts(self, part_db: e7epd.E7EPD.GenericComponent = None):
+        if part_db is None:
+            part_db = self.choose_component()
+        if part_db.is_database_empty():
+            console.print("[italic red]Sorry, but there are no parts for that component[/]")
+            return
+        all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=True).ask()
+        if all_parts:
+            self.print_filtered_parts(part_db)
+        else:
+            self.print_all_parts(part_db)
+
+    def ask_for_spec_input_with_operator(self, part_db: e7epd.E7EPD.GenericComponent, spec: dict, choices: list = None, operator_allowed: bool = True):
         if spec['input_type'] == 'parts_json':  # We are handling adding a part, which is seperate from a value
             try:
                 inp = self._ask_for_pcb_parts()
             except self._HelperFunctionExitError:
                 raise KeyboardInterrupt()
             return inp
+        op = '=='
         while 1:
             if spec['db_name'] == 'mfr_part_numb':
                 try:
@@ -428,6 +474,10 @@ class CLI:
             if inp is not None:
                 # Remove leading and trailing whitespace
                 inp = inp.strip()
+                if operator_allowed:
+                    if inp.startswith(tuple(['<', '<=', '>', '>='])):
+                        op = re.findall(r'\>=|\>|\<=|\<', inp)[0]
+                        inp = re.sub(r'\>=|\>|\<=|\<', "", inp)
                 if spec['shows_as'] == 'engineering':
                     try:
                         inp = EngNumber(inp)
@@ -457,6 +507,10 @@ class CLI:
                     console.print("Inputted value is not a %s" % spec['input_type'])
                     continue
             break
+        return inp, op
+
+    def ask_for_spec_input(self, part_db: e7epd.E7EPD.GenericComponent, spec: dict, choices: list = None):
+        inp, op = self.ask_for_spec_input_with_operator(part_db, spec, choices, operator_allowed=False)
         return inp
 
     @staticmethod
@@ -487,59 +541,34 @@ class CLI:
             autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_packages']
         return autocomplete_choices
 
-    def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericPart):
-        """
-        Prints all parts in a component database with filtering
-        Args:
-            part_db: The component database to use
-        """
-        choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
-        specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
-        if specs_selected is None:
-            return
-        if len(specs_selected) == 0:
-            console.print("[red]Must choose something[/]")
-            return
-        part_filter = part_db.part_type()
-        for spec in specs_selected:
-            autocomplete_choices = self.get_autocomplete_list(spec['db_name'], part_db.table_name)
-            try:
-                inp = self.ask_for_spec_input(part_db, spec, autocomplete_choices)
-            except KeyboardInterrupt:
-                console.print("Canceled part lookup")
-                return
-            setattr(part_filter, spec['db_name'], inp)
-        try:
-            parts_list = part_db.get_sorted_parts(part_filter)
-        except e7epd.EmptyInDatabase:
-            console.print("[red]No filtered parts in the database[/]")
-            return
-        self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
-
-    def get_partdb_and_mfg(self, part_db: e7epd.E7EPD.GenericPart = None, mfg_must_exist: bool = None):
+    def get_partdb_and_mfg(self, part_db: e7epd.E7EPD.GenericComponent = None, mfg_must_exist: bool = None):
         """
         Helper function to get the manufacturer part number and component database
         Args:
-            part_db: The selected component database. If not given, this function will ask the user to select one
+            part_db: The selected component database. If not given, this function will return one depending on the
+                     manufacturer part number
             mfg_must_exist: Whether the manufacturer part number must already exist in the database
 
         Returns: A tupple of a selected component database and the manufacturer part number
         """
-        mfr_part_numb = None
         if part_db is None:
-            try:
-                part_db = self.choose_component()
-            except KeyboardInterrupt:
-                raise self._HelperFunctionExitError()
-        # Ask for manufacturer part number first, and make sure there are no conflicts
-        if mfr_part_numb is None:
-            try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=mfg_must_exist)
-            except self._HelperFunctionExitError:
-                raise self._HelperFunctionExitError()
+            all_component_dict = self.db.get_all_component_part_number()
+            all_mfr_list = [item for lists in all_component_dict.values() for item in lists]
+        else:
+            all_mfr_list = part_db.get_all_mfr_part_numb_in_db()
+
+        try:
+            mfr_part_numb = self._ask_manufacturer_part_number(all_mfr_list, must_already_exist=mfg_must_exist)
+        except self._HelperFunctionExitError:
+            raise self._HelperFunctionExitError()
+        if part_db is None:
+            for c in all_component_dict:
+                if mfr_part_numb in all_component_dict[c]:
+                    part_db = self.db.components[c]
+                    break
         return part_db, mfr_part_numb
 
-    def add_new_part(self, part_db: e7epd.E7EPD.GenericPart = None):
+    def add_new_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
         """ Function gets called when a part is to be added """
         try:
             if part_db is None:
@@ -583,7 +612,7 @@ class CLI:
             console.print("\nOk, no part is added")
             return
 
-    def delete_part(self, part_db: e7epd.E7EPD.GenericPart):
+    def delete_part(self, part_db: e7epd.E7EPD.GenericComponent):
         """ This gets called when a part is to be deleted """
         try:
             part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
@@ -599,14 +628,15 @@ class CLI:
         else:
             console.print("Did not delete the part, it is safe.")
 
-    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericPart = None, mfr_part_numb: str = None):
+    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericComponent = None, mfr_part_numb: str = None):
         try:
             if mfr_part_numb is None or part_db is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
                 try:
                     part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
                 except self._HelperFunctionExitError:
                     return
-            console.print('There are {:d} parts of the selected component'.format(part_db.get_part_by_mfr_part_numb(mfr_part_numb).stock))
+            component = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
+            console.print('There are {:d} parts of the selected component'.format(component.stock))
             while 1:
                 add_by = questionary.text("Enter how much you want to add this part by: ").ask()
                 if add_by is None:
@@ -617,19 +647,21 @@ class CLI:
                     console.print("Must be an integer")
                     continue
                 break
-            new_s = part_db.append_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, append_by=add_by)
-            console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(new_s))
+            component.stock += add_by
+            part_db.commit()
+            console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(component.stock))
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
 
-    def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericPart = None):
+    def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
         try:
             try:
                 part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
             except self._HelperFunctionExitError:
                 return
-            console.print('There are {:d} parts of the selected component'.format(part_db.get_part_by_mfr_part_numb(mfr_part_numb).stock))
+            component = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
+            console.print('There are {:d} parts of the selected component'.format(component.stock))
             while 1:
                 remove_by = questionary.text("Enter how many components to remove from this part?: ").ask()
                 if remove_by is None:
@@ -640,18 +672,18 @@ class CLI:
                     console.print("Must be an integer")
                     continue
                 break
-            try:
-                new_s = part_db.remove_stock_by_manufacturer_part_number(mfr_part_numb=mfr_part_numb, remove_by=remove_by)
-            except e7epd.NegativeStock as e_v:
+            if component.stock - remove_by < 0:
                 console.print("[red]Stock will go to negative[/]")
-                console.print("[red]If you want to make the stock zero, restart this operation and remove {:d} parts instead[/]".format(e_v.amount_to_make_zero))
-            else:
-                console.print('[green]Removed to your stock :). There is now {:d} left of it.[/]'.format(new_s))
+                console.print("[red]If you want to make the stock zero, restart this operation and remove {:d} parts instead[/]".format(component.stock))
+                return
+            component.stock -= remove_by
+            part_db.commit()
+            console.print('[green]Removed to your stock :). There is now {:d} left of it.[/]'.format(component.stock))
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
 
-    def edit_part(self, part_db: e7epd.E7EPD.GenericPart):
+    def edit_part(self, part_db: e7epd.E7EPD.GenericComponent):
         """
         Function to update the part's properties
         """
@@ -688,14 +720,71 @@ class CLI:
                     setattr(part, to_change['db_name'], self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change['db_name'], part_db.table_name)))
                 except KeyboardInterrupt:
                     console.print("Did not change part")
-                    return
-
+                    continue
         except KeyboardInterrupt:
             part_db.rollback()
             console.print("\nOk, no stock is changed")
             return
 
-    def component_cli(self, part_db: e7epd.E7EPD.GenericPart):
+    def print_pcb_and_component_availability(self):
+        all_boards = self.db.pcbs.get_all_boardnames()
+        board_name = questionary.autocomplete("Enter the PCB name: ", choices=all_boards).ask()
+        if board_name is None:
+            console.print("No board is given")
+            return
+        if board_name not in all_boards:
+            console.print("A board not in the database was given")
+            return
+        rev = questionary.autocomplete("Enter the PCB revision: ", choices=self.db.pcbs.get_revision_per_boardname(board_name)).ask()
+
+        try:
+            board = self.db.pcbs.get_by_boardname_and_rev(board_name, rev)
+        except sqlalchemy.exc.NoResultFound:
+            console.print("[red]No board found for the given name and revision[/]")
+            return
+
+        all_parts_in_board = []
+        for board_part in board.parts:
+            part_db_name, part_db = self.db.get_component_by_table_name(board_part['comp_type'])
+            part_description = ""
+            if 'mfr_part_numb' in board_part['part']:
+                part_description = board_part['part']['mfr_part_numb']
+                try:
+                    parts_in_db = [part_db.get_part_by_mfr_part_numb(board_part['part']['mfr_part_numb'])]
+                except sqlalchemy.exc.NoResultFound:
+                    parts_in_db = []
+            else:
+                search_query = []
+                if board_part['comp_type'] == 'resistance':
+                    part_description = self.db.resistors.print_formatted_from_spec(board_part['part'])
+                for sc in board_part['part']:
+                    if type(board_part['part'][sc]) is dict:
+                        search_query.append({'db_name': sc, 'val': board_part['part'][sc]['val'], 'op': board_part['part'][sc]['op']})
+                    else:
+                        search_query.append({'db_name': sc, 'val': board_part['part'][sc]})
+                parts_in_db = part_db.get_sorted_parts(search_query)
+            if len(parts_in_db) == 0:
+                all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, '-', '0', '-'], 's'))
+            for p in parts_in_db:
+                all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, p.mfr_part_numb, str(p.stock), p.storage], None))
+
+        console.print("You currently have {:d} PCBs available".format(board.stock))
+
+        ta = rich.table.Table(title='All components for {} Rev {}'.format(board_name, rev))
+        ta.add_column("Stock Required")
+        ta.add_column("Reference")
+        ta.add_column("Description")
+        ta.add_column("Component Type")
+        ta.add_column("Available Mfr Part #")
+        ta.add_column("Stock Available")
+        ta.add_column("Component Location")
+        for parts_in_db in all_parts_in_board:
+            ta.add_row(*parts_in_db[0], style=parts_in_db[1])
+        console.print(ta)
+
+        return
+
+    def component_cli(self, part_db: e7epd.E7EPD.GenericComponent):
         """ The CLI handler for components """
         while 1:
             to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Edit Part", self.return_formatted_choice]).ask()
@@ -704,14 +793,7 @@ class CLI:
             if to_do == "Return":
                 break
             elif to_do == "Print parts in DB":
-                if part_db.is_database_empty():
-                    console.print("[italic red]Sorry, but there are no parts for that component[/]")
-                    continue
-                all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=False).ask()
-                if all_parts:
-                    self.print_filtered_parts(part_db)
-                else:
-                    self.print_all_parts(part_db)
+                self.print_parts(part_db)
             elif to_do == "Add Part":
                 self.add_new_part(part_db)
             elif to_do == "Delete Part":
@@ -723,7 +805,7 @@ class CLI:
             elif to_do == "Edit Part":
                 self.edit_part(part_db)
 
-    def choose_component(self) -> e7epd.E7EPD.GenericPart:
+    def choose_component(self) -> e7epd.E7EPD.GenericComponent:
         """
         Dialog to choose which component to use.
         Returns: The component class
@@ -741,9 +823,9 @@ class CLI:
         return part_db
 
     def wipe_database(self):
-        do_delete = questionary.confirm("ARE YOYU SURE???", auto_enter=False, default=False).ask()
+        do_delete = questionary.confirm("ARE YOU SURE???", auto_enter=False, default=False).ask()
         if do_delete is True:
-            do_delete = questionary.confirm("ARE YOYU SURE...AGAIN???", auto_enter=False, default=False).ask()
+            do_delete = questionary.confirm("ARE YOU SURE...AGAIN???", auto_enter=False, default=False).ask()
             if do_delete is True:
                 console.print("Don't regret this!!!")
                 self.db.wipe_database()
@@ -812,12 +894,16 @@ class CLI:
         try:
             while 1:
                 to_do = questionary.select("Select the component you want do things with:",
-                                           choices=['Add new part', 'Add new stock', 'Remove stock', 'Individual Components View',
-                                                    'Database Setting', 'Digikey API Settings', 'Exit']).ask()
+                                           choices=['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Individual Components View',
+                                                    'Database Setting', 'Digikey API Settings', 'Exit'], use_shortcuts=True).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
                     break
+                elif to_do == 'Check components for PCB':
+                    self.print_pcb_and_component_availability()
+                elif to_do == 'Search Part':
+                    self.print_parts()
                 elif to_do == 'Add new part':
                     try:
                         self.add_new_part()
