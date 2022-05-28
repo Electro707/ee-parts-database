@@ -210,7 +210,7 @@ class CLI:
     def check_for_dk_api(self):
         if not self.is_digikey_available:
             console.print("[orange]API is not setup[/]")
-            console.print("[orange]Please install it with 'pip install git+https://github.com/Electro707/digikey-api.git@1fd3abec434b87a7c051bfa95487c2bfbd4a7651'[/]")
+            console.print("[orange]Please install it with 'pip install git+https://github.com/Electro707/digikey-api.git@8549f42a1853c9d371c3fb1b0b8d780d405174d8'[/]")
             raise self._NoDigikeyApiError
 
     def check_for_db_config(self):

@@ -36,7 +36,7 @@ E7EPD Database Specification
     * Added datasheet column for all components
     * Removal of ``project_name`` from the PCB table and replaced it ``board_name``
     * Added a ``parts`` JSON list for the PCB table, allowing parts to be cross-referenced per board
-* v0.5(WIP):
+* v0.5(RC):
     * Changed the SQL primary key for all components to ``mfr_part_numb``, and removed the ``id`` column
     * Added a ``user`` column for all components
 
@@ -71,7 +71,7 @@ Database Python DB Wrapper
     * Re-made the ``backup_db`` function to actually work. Dumps content as a JSON file
 * v0.4.1:
     * No changes
-* v0.5(WIP):
+* v0.5(RC):
     * Added an overall `E7EPD` helper function to get all manufacturer part number
     * Separated the ``PCB`` class into it's own compared to components with some different function calls
 
@@ -105,7 +105,7 @@ CLI
     * Added docs for the Digikey barcode scanning feature
     * Fixed the `Digikey API Settings` option in the main menu to allow changing the Client ID and Client Secret
     * Added a __main__.py file to allow execution of `e7epd` as a Python module with `python -m e7epd`
-* v0.5(WIP):
+* v0.5(RC):
     * Added more docs to existing functions to make it easier to interpret
     * Made it so creating an existing part would prompt to instead add the part to the existing stock
     * Added better messages about stock when adding or removing stock
