@@ -1,14 +1,14 @@
-E7EPD Database Specification 
+E7EPD Database Specification
 ================================================
-**Rev 0.4**
+**Rev 0.5**
 
 Specification Notes
 ---------------------------------
-Components 
+Components
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 All components, when specified, will be based of the `GenericPart` table spec that contains common columns.
-Note that the `GenericPart` table doesn't exist by itself but is used in this document as columns that every 
+Note that the `GenericPart` table doesn't exist by itself but is used in this document as columns that every
 other table should have
 
 Different Tables Per Components

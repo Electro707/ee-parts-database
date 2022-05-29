@@ -2,11 +2,11 @@ Changelog
 ==========================================
 The database specification will be separately tracked from the Python DB wrapper and CLI tool
 
-E7EPD Database Specification
---------------------------------------------
-
 .. role:: strike
     :class: strike
+
+E7EPD Database Specification
+--------------------------------------------
 
 * v0.05:
     * Initial Release
@@ -36,9 +36,10 @@ E7EPD Database Specification
     * Added datasheet column for all components
     * Removal of ``project_name`` from the PCB table and replaced it ``board_name``
     * Added a ``parts`` JSON list for the PCB table, allowing parts to be cross-referenced per board
-* v0.5(RC):
+* v0.5:
     * Changed the SQL primary key for all components to ``mfr_part_numb``, and removed the ``id`` column
     * Added a ``user`` column for all components
+    * Removed ``sub_rev`` column from ``PCB`` table
 
 Database Python DB Wrapper
 --------------------------------------------
@@ -71,10 +72,19 @@ Database Python DB Wrapper
     * Re-made the ``backup_db`` function to actually work. Dumps content as a JSON file
 * v0.4.1:
     * No changes
-* v0.5(RC):
+* v0.5:
     * Added an overall `E7EPD` helper function to get all manufacturer part number
     * Separated the ``PCB`` class into it's own compared to components with some different function calls
     * Added a ``User`` column per component
+    * New ``print_formatted_from_spec`` function for resistances, to print out for example "A 5k resistor with a 5% tollerance"
+    * ``get_sorted_parts()`` component class function now allows operators like ">" and "<"
+    * Removed the following component class functions:
+        * ``append_stock_by_manufacturer_part_number``
+        * ``remove_stock_by_manufacturer_part_number``
+        * ``get_part_by_id``
+    * Added a typing hinting for every component class instead of just ``GenericComponent``
+    * Seperated the ``GenericPart`` class into ``GenericItem`` and ``GenericComponent``, ``GenericComponent`` having
+      functions more specific to components (like things related to the manufacturer part number)
 
 
 CLI
@@ -106,12 +116,14 @@ CLI
     * Added docs for the Digikey barcode scanning feature
     * Fixed the `Digikey API Settings` option in the main menu to allow changing the Client ID and Client Secret
     * Added a __main__.py file to allow execution of `e7epd` as a Python module with `python -m e7epd`
-* v0.5(RC):
+* v0.5:
     * Added more docs to existing functions to make it easier to interpret
     * Made it so creating an existing part would prompt to instead add the part to the existing stock
     * Added better messages about stock when adding or removing stock
     * Added PCBs as an option to add them
     * Added a menu to search the current inventory against a PCB to see if one can be built
+    * Allowing for usage of operators like ``>, >=, <, <=`` when filtering the database
+    * Added new ``Seach Parts`` menu option (which is the same as ``Individual Components View -> Print parts in DB``
 
 * TODOs:
     * Add option to import BOM file/CSV file
