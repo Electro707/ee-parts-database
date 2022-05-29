@@ -109,28 +109,6 @@ class E7EPD:
             self.table_name = self.part_type.__tablename__
             self.log = logging.getLogger(self.part_type.__tablename__)
 
-        # def get_part_by_id(self, sql_id: int) -> spec.GenericItem:
-        #     """
-        #         Function that returns parts parameters by part ID
-        #
-        #         Args:
-        #             sql_id (int): Part ID in the SQL table
-        #
-        #         Returns:
-        #             The part's item class
-        #
-        #         Raises:
-        #             EmptyInDatabase: If the SQL ID does not exist in the database
-        #     """
-        #     d = self.session.query(self.part_type).filter_by(id=sql_id).all()
-        #     if len(d) == 0:
-        #         raise EmptyInDatabase()
-        #     elif len(d) == 1:
-        #         return d[0]
-        #     else:
-        #         # TODO: Add exception, as having more than 1 of the same ID is impossible
-        #         pass
-
         def create_part(self, part_info: ComponentTypeVar):
             """
                 Function to create a part for the given info

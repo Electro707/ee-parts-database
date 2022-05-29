@@ -74,6 +74,7 @@ Database Python DB Wrapper
 * v0.5(RC):
     * Added an overall `E7EPD` helper function to get all manufacturer part number
     * Separated the ``PCB`` class into it's own compared to components with some different function calls
+    * Added a ``User`` column per component
 
 
 CLI

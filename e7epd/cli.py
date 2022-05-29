@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
     E707PD Python CLI Application
-    Rev 0.4pre
+    Rev 0.5
 """
 # External Modules Import
 import subprocess
@@ -680,10 +680,10 @@ class CLI:
             part_db.commit()
             console.print('[green]Removed to your stock :). There is now {:d} left of it.[/]'.format(component.stock))
         except KeyboardInterrupt:
-            console.print("\nOk, no stock is changed")
+            console.print("Ok, no stock is changed")
             return
 
-    def edit_part(self, part_db: e7epd.E7EPD.GenericComponent):
+    def edit_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
         """
         Function to update the part's properties
         """
@@ -719,11 +719,11 @@ class CLI:
                 try:
                     setattr(part, to_change['db_name'], self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change['db_name'], part_db.table_name)))
                 except KeyboardInterrupt:
-                    console.print("Did not change part")
+                    console.print("Did not change spec")
                     continue
         except KeyboardInterrupt:
             part_db.rollback()
-            console.print("\nOk, no stock is changed")
+            console.print("Did not change part")
             return
 
     def print_pcb_and_component_availability(self):
@@ -894,7 +894,7 @@ class CLI:
         try:
             while 1:
                 to_do = questionary.select("Select the component you want do things with:",
-                                           choices=['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Individual Components View',
+                                           choices=['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part', 'Individual Components View',
                                                     'Database Setting', 'Digikey API Settings', 'Exit'], use_shortcuts=True).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
@@ -917,6 +917,11 @@ class CLI:
                 elif to_do == 'Remove stock':
                     try:
                         self.remove_stock_from_part()
+                    except KeyboardInterrupt:
+                        continue
+                elif to_do == 'Edit part':
+                    try:
+                        self.edit_part()
                     except KeyboardInterrupt:
                         continue
                 elif to_do == 'Individual Components View':

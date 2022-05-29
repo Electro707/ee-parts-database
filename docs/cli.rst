@@ -27,7 +27,7 @@ To utilize this feature, my fork of `digikey-api` must be installed, which can b
 
 .. code-block:: sh
 
-    pip install git+https://github.com/Electro707/digikey-api.git@1fd3abec434b87a7c051bfa95487c2bfbd4a7651
+    pip install git+https://github.com/Electro707/digikey-api.git@8549f42a1853c9d371c3fb1b0b8d780d405174d8
 
 Initially, you need to setup the DigikeyAPI with you client secret and client ID in the CLI for your Digikey Developer application which is done thru the main menu under the *'Digikey API Settings'* option.
 This application must have the *'Barcode'* and *'Product Information'* APIs enabled in Digikey's API settings.

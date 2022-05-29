@@ -36,13 +36,15 @@ eedata_generic_spec = [
     {'db_name': 'user', 'showcase_name': 'User', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
 ]
 eedata_generic_items = [i['db_name'] for i in eedata_generic_spec]
+eedata_generic_items_preitems = ['stock', 'mfr_part_numb', 'manufacturer']
+eedata_generic_items_postitems = ['package', 'storage', 'comments', 'datasheet', 'user']
 
 eedata_resistors_spec = eedata_generic_spec + [
     {'db_name': 'resistance', 'showcase_name': 'Resistance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
     {'db_name': 'tolerance', 'showcase_name': 'Tolerance', 'shows_as': 'percentage', 'input_type': 'float', 'required': False, },
     {'db_name': 'power', 'showcase_name': 'Power Rating', 'shows_as': 'normal', 'input_type': 'float', 'required': False, }
 ]
-eedata_resistor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'resistance', 'tolerance', 'power', 'package', 'storage', 'comments', 'datasheet']
+eedata_resistor_display_order = eedata_generic_items_preitems+['resistance', 'tolerance', 'power']+eedata_generic_items_postitems
 
 eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'capacitance', 'showcase_name': 'Capacitance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
@@ -51,19 +53,19 @@ eedata_capacitor_spec = eedata_generic_spec + [
     {'db_name': 'temp_coeff', 'showcase_name': 'Temperature Coefficient', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
     {'db_name': 'cap_type', 'showcase_name': 'Capacitor Type', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
 ]
-eedata_capacitor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff', 'package', 'storage', 'comments', 'datasheet']
+eedata_capacitor_display_order = eedata_generic_items_preitems+['capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff']+eedata_generic_items_postitems
 
 eedata_ic_spec = eedata_generic_spec + [
     {'db_name': 'ic_type', 'showcase_name': 'IC Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
 ]
-eedata_ic_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'ic_type', 'package', 'storage', 'comments', 'datasheet']
+eedata_ic_display_order = eedata_generic_items_preitems+['ic_type']+eedata_generic_items_postitems
 
 eedata_inductor_spec = eedata_generic_spec + [
     {'db_name': 'inductance', 'showcase_name': 'Inductance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
     {'db_name': 'tolerance', 'showcase_name': 'Tolerance', 'shows_as': 'percentage', 'input_type': 'float', 'required': False, },
     {'db_name': 'max_current', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_inductor_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'inductance', 'tolerance', 'max_current', 'package', 'storage', 'comments', 'datasheet']
+eedata_inductor_display_order = eedata_generic_items_preitems+['inductance', 'tolerance', 'max_current']+eedata_generic_items_postitems
 
 eedata_diode_spec = eedata_generic_spec + [
     {'db_name': 'diode_type', 'showcase_name': 'Diode Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
@@ -71,7 +73,7 @@ eedata_diode_spec = eedata_generic_spec + [
     {'db_name': 'average_current', 'showcase_name': 'Average Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'max_rv', 'showcase_name': 'Max Reverse Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_diode_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'diode_type', 'max_rv', 'average_current', 'max_current', 'package', 'storage', 'comments', 'datasheet']
+eedata_diode_display_order = eedata_generic_items_preitems+['diode_type', 'max_rv', 'average_current', 'max_current']+eedata_generic_items_postitems
 
 eedata_crystal_spec = eedata_generic_spec + [
     {'db_name': 'frequency', 'showcase_name': 'Frequency', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
@@ -79,7 +81,7 @@ eedata_crystal_spec = eedata_generic_spec + [
     {'db_name': 'esr', 'showcase_name': 'ESR', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'stability_ppm', 'showcase_name': 'Stability (ppm)', 'shows_as': 'normal', 'input_type': 'float', 'required': False, },
 ]
-eedata_crystal_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'frequency', 'load_c', 'esr', 'stability_ppm', 'package', 'storage', 'comments', 'datasheet']
+eedata_crystal_display_order = eedata_generic_items_preitems+['frequency', 'load_c', 'esr', 'stability_ppm']+eedata_generic_items_postitems
 
 eedata_mosfet_spec = eedata_generic_spec + [
     {'db_name': 'mosfet_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
@@ -89,7 +91,7 @@ eedata_mosfet_spec = eedata_generic_spec + [
     {'db_name': 'i_d', 'showcase_name': 'Max Drain Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'i_d_pulse', 'showcase_name': 'Max Drain Peak Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_mosfet_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'mosfet_type', 'vdss', 'vgss', 'vgs_th', 'i_d', 'i_d_pulse', 'package', 'storage', 'comments', 'datasheet']
+eedata_mosfet_display_order = eedata_generic_items_preitems+['mosfet_type', 'vdss', 'vgss', 'vgs_th', 'i_d', 'i_d_pulse']+eedata_generic_items_postitems
 
 eedata_bjt_spec = eedata_generic_spec + [
     {'db_name': 'bjt_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
@@ -99,19 +101,19 @@ eedata_bjt_spec = eedata_generic_spec + [
     {'db_name': 'i_c', 'showcase_name': 'Max Cont. Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'i_c_peak', 'showcase_name': 'Max Peak Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_bjt_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'bjt_type', 'vcbo', 'vceo', 'vebo', 'i_c', 'i_c_peak', 'package', 'storage', 'comments', 'datasheet']
+eedata_bjt_display_order = eedata_generic_items_preitems+['bjt_type', 'vcbo', 'vceo', 'vebo', 'i_c', 'i_c_peak']+eedata_generic_items_postitems
 
 eedata_connector_spec = eedata_generic_spec + [
     {'db_name': 'conn_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
 ]
-eedata_connector_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'conn_type', 'package', 'storage', 'comments', 'datasheet']
+eedata_connector_display_order = eedata_generic_items_preitems+['conn_type']+eedata_generic_items_postitems
 
 eedata_led_spec = eedata_generic_spec + [
     {'db_name': 'led_type', 'showcase_name': 'LED Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
     {'db_name': 'vf', 'showcase_name': 'LED forward voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_led_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'led_type', 'vf', 'max_i', 'package', 'storage', 'comments', 'datasheet']
+eedata_led_display_order = eedata_generic_items_preitems+['led_type', 'vf', 'max_i']+eedata_generic_items_postitems
 
 eedata_fuse_spec = eedata_generic_spec + [
     {'db_name': 'fuse_type', 'showcase_name': 'Fuse Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
@@ -120,7 +122,7 @@ eedata_fuse_spec = eedata_generic_spec + [
     {'db_name': 'trip_i', 'showcase_name': 'Trip Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'hold_i', 'showcase_name': 'Hold Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_fuse_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i', 'package', 'storage', 'comments', 'datasheet']
+eedata_fuse_display_order = eedata_generic_items_preitems+['fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i']+eedata_generic_items_postitems
 
 eedata_button_spec = eedata_generic_spec + [
     {'db_name': 'bt_type', 'showcase_name': 'Button Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
@@ -128,10 +130,10 @@ eedata_button_spec = eedata_generic_spec + [
     {'db_name': 'max_v', 'showcase_name': 'Voltage Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
     {'db_name': 'max_i', 'showcase_name': 'Current Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
 ]
-eedata_button_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'bt_type', 'circuit_t', 'max_v', 'max_i', 'package', 'storage', 'comments', 'datasheet']
+eedata_button_display_order = eedata_generic_items_preitems+['bt_type', 'circuit_t', 'max_v', 'max_i']+eedata_generic_items_postitems
 
 eedata_misc_spec = eedata_generic_spec
-eedata_misc_display_order = ['stock', 'mfr_part_numb', 'manufacturer', 'package', 'storage', 'comments', 'datasheet']
+eedata_misc_display_order = eedata_generic_items_preitems+eedata_generic_items_postitems
 
 eedata_pcb_spec = [
     {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
