@@ -1,5 +1,5 @@
 # E707 Electronics Parts Database (E7EPD)
-## Database Rev 0.5, Backend and CLI Rev 0.5
+## Database Rev 0.5, Backend and CLI Rev 0.5.1
 ## Still a Work-In-Progress
 
 This project attempts to create yet another open-source electronics parts management system. While there are some out

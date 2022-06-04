@@ -85,6 +85,8 @@ Database Python DB Wrapper
     * Added a typing hinting for every component class instead of just ``GenericComponent``
     * Seperated the ``GenericPart`` class into ``GenericItem`` and ``GenericComponent``, ``GenericComponent`` having
       functions more specific to components (like things related to the manufacturer part number)
+* v0.5.1:
+    * Removed the `EmptyInDatabase` return exception from `get_all_mfr_part_numb_in_db()`, instead just returns an empty list
 
 
 CLI
@@ -124,6 +126,10 @@ CLI
     * Added a menu to search the current inventory against a PCB to see if one can be built
     * Allowing for usage of operators like ``>, >=, <, <=`` when filtering the database
     * Added new ``Seach Parts`` menu option (which is the same as ``Individual Components View -> Print parts in DB``
+* v0.5.1:
+    * Fixed bug with a new empty database when looking up the current list of parts to use as a typehint
+    * Fixed inputting a negative number in removing or adding stock
+    * Fixed exception when there are no PCBs in the database
 
 * TODOs:
     * Add option to import BOM file/CSV file
