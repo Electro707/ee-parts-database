@@ -294,9 +294,13 @@ class CLI:
 
         Returns: The entered manufacturer part number
         """
-        if existing_mfr_list is None and must_already_exist is not None:
-            raise UserWarning("Internal Error: existing_mfr_list is None but must_already_exist isn't")
-        if existing_mfr_list is not None:
+        # Replace default argument
+        if existing_mfr_list is None:
+            existing_mfr_list = []
+        # If the exist
+        # if len(existing_mfr_list) == 0 and must_already_exist is True:
+        #     raise UserWarning("Internal Error: existing_mfr_list is None but must_already_exist is True")
+        if len(existing_mfr_list) != 0:
             mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=existing_mfr_list).ask()
         else:
             mfr_part_numb = questionary.text("Enter the manufacturer part number (or scan a Digikey barcode): ").ask()
@@ -646,6 +650,9 @@ class CLI:
                 except ValueError:
                     console.print("Must be an integer")
                     continue
+                if add_by < 0:
+                    console.print("Must be greater than 0")
+                    continue
                 break
             component.stock += add_by
             part_db.commit()
@@ -670,6 +677,9 @@ class CLI:
                     remove_by = int(remove_by)
                 except ValueError:
                     console.print("Must be an integer")
+                    continue
+                if remove_by < 0:
+                    console.print("Must be greater than 0")
                     continue
                 break
             if component.stock - remove_by < 0:
@@ -728,6 +738,9 @@ class CLI:
 
     def print_pcb_and_component_availability(self):
         all_boards = self.db.pcbs.get_all_boardnames()
+        if len(all_boards) == 0:
+            console.print("There are no PCBs in the database")
+            return
         board_name = questionary.autocomplete("Enter the PCB name: ", choices=all_boards).ask()
         if board_name is None:
             console.print("No board is given")

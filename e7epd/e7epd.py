@@ -210,8 +210,6 @@ class E7EPD:
                 A list of all manufacturer part numbers in the database
             """
             d = self.session.query(self.part_type).with_entities(self.part_type.mfr_part_numb).all()
-            if len(d) == 0:
-                raise EmptyInDatabase()
             return [p.mfr_part_numb for p in d]
 
         def get_sorted_parts(self, search_filter: list):
