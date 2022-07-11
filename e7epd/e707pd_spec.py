@@ -5,7 +5,8 @@ default_string_len = 30
 
 
 class Base(object):
-    mfr_part_numb = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False)
+    ipn = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False)
+    mfr_part_numb = Column(String(default_string_len), nullable=False)
     stock = Column(Integer, nullable=False)
     manufacturer = Column(String(default_string_len))
     storage = Column(String(default_string_len))

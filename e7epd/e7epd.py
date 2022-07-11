@@ -15,7 +15,7 @@ import typing
 import e7epd.e707pd_spec as spec
 
 # Version of the database spec
-database_spec_rev = '0.5'
+database_spec_rev = '0.6'
 
 
 class InputException(Exception):
@@ -604,6 +604,9 @@ class E7EPD:
         """
             Updates the database to the most recent revision
         """
+        def mydefault(context):
+            return context.get_current_parameters()['name']
+
         with self.db_conn.connect() as conn:
             ctx = MigrationContext.configure(conn)
             op = Operations(ctx)
@@ -629,6 +632,11 @@ class E7EPD:
                     op.drop_column(self.components[c].table_name, 'id')
                     op.create_primary_key(None, self.components[c].table_name, ['mfr_part_numb'])
                     op.add_column(self.components[c].table_name, Column('user', String(spec.default_string_len)))
+            if v == '0.5':
+                for c in self.components:
+                    op.add_column(self.components[c].table_name, Column('ipn', String(spec.default_string_len), default=mydefault, nullable=False))
+                    # op.drop_constraint(self.components[c].table_name, 'mfr_part_numb', type_='primary')
+                    # op.create_primary_key(None, self.components[c].table_name, ['ipn'])
             self.config.store_current_db_version()
 
     def is_latest_database(self) -> bool:
