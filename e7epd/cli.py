@@ -91,10 +91,15 @@ class CLIConfig:
         if self.config['db_list'][database_name]['type'] == 'local':
             return sqlalchemy.create_engine("sqlite:///{}".format(pkg_resources.resource_filename(__name__, 'data/'+self.config['db_list'][database_name]['filename'])))
         elif self.config['db_list'][database_name]['type'] == 'mysql_server':
-            return sqlalchemy.create_engine("mysql://{}:{}@{}:{}/{}".format(self.config['db_list'][database_name]['username'],
-                                                                            self.config['db_list'][database_name]['password'],
-                                                                            self.config['db_list'][database_name]['db_host'], 3306,
-                                                                            self.config['db_list'][database_name]['db_name']))
+            return sqlalchemy.create_engine("mysql://{}:{}@{}/{}".format(self.config['db_list'][database_name]['username'],
+                                                                         self.config['db_list'][database_name]['password'],
+                                                                         self.config['db_list'][database_name]['db_host'],
+                                                                         self.config['db_list'][database_name]['db_name']))
+        elif self.config['db_list'][database_name]['type'] == 'postgress_server':
+            return sqlalchemy.create_engine("postgresql://{}:{}@{}/{}".format(self.config['db_list'][database_name]['username'],
+                                                                              self.config['db_list'][database_name]['password'],
+                                                                              self.config['db_list'][database_name]['db_host'],
+                                                                              self.config['db_list'][database_name]['db_name']))
 
     @CLIConfig_config_db_list_checker
     def get_database_connection_info(self, database_name: str = None) -> dict:
@@ -122,16 +127,25 @@ class CLIConfig:
         self.save()
 
     def save_database_as_mysql(self, database_name: str, username: str, password: str, db_name: str, host: str):
+        self._save_database_as_hostsb(database_name, username, password, db_name, host)
+        self.config['db_list'][database_name]['type'] = 'mysql_server'
+        self.save()
+
+    def save_database_as_postgress(self, database_name: str, username: str, password: str, db_name: str, host: str):
+        self._save_database_as_hostsb(database_name, username, password, db_name, host)
+        self.config['db_list'][database_name]['type'] = 'postgress_server'
+        self.save()
+
+    def _save_database_as_hostsb(self, database_name: str, username: str, password: str, db_name: str, host: str):
         if 'db_list' not in self.config:
             self.config['db_list'] = {}
         if database_name not in self.config['db_list']:
             self.config['db_list'][database_name] = {}
-        self.config['db_list'][database_name]['type'] = 'mysql_server'
         self.config['db_list'][database_name]['username'] = username
         self.config['db_list'][database_name]['password'] = password
         self.config['db_list'][database_name]['db_name'] = db_name
         self.config['db_list'][database_name]['db_host'] = host
-        self.save()
+
 
 
 class DKApiSQLConfig:
@@ -897,11 +911,17 @@ class CLI:
     def main(self):
         # Check DB version before doing anything
         if not self.db.is_latest_database():
-            do_update = questionary.confirm("Database {:} is not at the latest version. Updrade?".format(self.conf.get_selected_database()), auto_enter=False, default=False).ask()
+            do_update = questionary.confirm("Database {:} is not at the latest version. Upgrade?".format(self.conf.get_selected_database()), auto_enter=False, default=False).ask()
             if do_update:
                 self.db.update_database()
             else:
-                console.print("[red]You chose to not update the database, thus this CLI application is not usable[/]")
+                console.print("[red]You chose to not update the database. Need to select or create another one[/]")
+                try:
+                    self.database_settings()
+                except KeyboardInterrupt:
+                    pass
+                self.db.close()
+                self.conf.save()
                 return
         console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}\nSelected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
@@ -960,13 +980,16 @@ class CLI:
 def ask_for_database(config: CLIConfig):
     console.print("Oh no, no database is configured. Let's get that settled")
     db_id_name = questionary.text("What do you want to call this database").unsafe_ask()
-    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mySQL', 'SQlite']).unsafe_ask()
-    if is_server == 'mySQL':
+    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mySQL', 'PostgreSQL', 'SQlite']).unsafe_ask()
+    if is_server == 'mySQL' or is_server == 'PostgreSQL':
         host = questionary.text("What is the database host?").unsafe_ask()
         db_name = questionary.text("What is the database name").unsafe_ask()
         username = questionary.text("What is the database username?").unsafe_ask()
         password = questionary.password("What is the database password?").unsafe_ask()
-        config.save_database_as_mysql(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
+        if is_server == 'mySQL':
+            config.save_database_as_mysql(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
+        elif is_server == 'PostgreSQL':
+            config.save_database_as_postgress(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
     elif is_server == 'SQlite':
         file_name = questionary.text("Please enter the name of the server database file you want to be created").unsafe_ask()
         if '.db' not in file_name:
