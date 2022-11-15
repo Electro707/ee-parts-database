@@ -462,6 +462,21 @@ class CLI:
             self.print_all_parts(part_db)
 
     def ask_for_spec_input_with_operator(self, part_db: e7epd.E7EPD.GenericComponent, spec: dict, choices: list = None, operator_allowed: bool = True):
+        """
+        Function that prompts the user to enter the specification (resistance, package, etc) for a part.
+        This function allows nicely type inputs like 10k
+
+        Args:
+            part_db: The part database to get the manufacturer part number
+                       TODO: Remove this and replace with a list option for choices
+            spec: The specification that we want the user to enter
+            choices: A list of choices to show allow the user to select from
+            operator_allowed: Whether to allow the user to enter an operator (like >1k)
+
+        Returns: A tuple of
+                    - The input given as the spec type (so for resistance it will return as a float)
+                    - The operator to compare with the input if allowed, like == or >
+        """
         if spec['input_type'] == 'parts_json':  # We are handling adding a part, which is seperate from a value
             try:
                 inp = self._ask_for_pcb_parts()

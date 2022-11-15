@@ -130,6 +130,10 @@ CLI
     * Fixed bug with a new empty database when looking up the current list of parts to use as a typehint
     * Fixed inputting a negative number in removing or adding stock
     * Fixed exception when there are no PCBs in the database
+* v0.6.0 (WIP):
+    * Allowing for MySQL or PostgreSQL options for database
+    * Better CLI handling if one does not want to upgrade database
+    * Better docs
 
 * TODOs:
     * Add option to import BOM file/CSV file

@@ -579,6 +579,12 @@ class E7EPD:
         return all_mfg_list
 
     def get_all_component_part_number(self) -> dict:
+        """
+        Gets all component's manufacturer part number in the database
+        NOTE: This excludes PCBs as it is not a component
+
+        Returns: A dictionary of lists containing all part numbers per component
+        """
         all_mfr_list = {}
         for c in self.components:
             all_mfr_list[c] = self.components[c].get_all_mfr_part_numb_in_db()

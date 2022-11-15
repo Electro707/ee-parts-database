@@ -4,4 +4,4 @@ import e7epd.e707pd_spec as spec
 
 
 # Version of this backend
-__version__ = '0.5.2-pre'
+__version__ = '0.6.0-dev'
