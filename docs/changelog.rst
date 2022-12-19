@@ -87,6 +87,8 @@ Database Python DB Wrapper
       functions more specific to components (like things related to the manufacturer part number)
 * v0.5.1:
     * Removed the `EmptyInDatabase` return exception from `get_all_mfr_part_numb_in_db()`, instead just returns an empty list
+* v0.6.0:
+    * No changes
 
 
 CLI
@@ -130,7 +132,7 @@ CLI
     * Fixed bug with a new empty database when looking up the current list of parts to use as a typehint
     * Fixed inputting a negative number in removing or adding stock
     * Fixed exception when there are no PCBs in the database
-* v0.6.0 (WIP):
+* v0.6.0:
     * Allowing for MySQL or PostgreSQL options for database
     * Better CLI handling if one does not want to upgrade database
     * Better docs
