@@ -15,7 +15,7 @@ import typing
 import e7epd.e707pd_spec as spec
 
 # Version of the database spec
-database_spec_rev = '0.6'
+database_spec_rev = '0.7.0-dev'
 
 
 class InputException(Exception):
@@ -308,223 +308,56 @@ class E7EPD:
             else:
                 raise InputException("Did not give a manufacturer part number")
 
-    class PCBs(GenericComponent[spec.PCB]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_pcb_spec
-            self.table_item_display_order = spec.eedata_pcb_display_order
-            self.part_type = spec.PCB
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-        def get_all_boardnames(self) -> list:
-            d = self.get_all_parts()
-            return [i.board_name for i in d]
-
-        def get_revision_per_boardname(self, board_name: str) -> list:
-            d = self.session.query(self.part_type).filter(self.part_type.board_name == board_name).with_entities(self.part_type.rev).all()
-            return [i.rev for i in d]
-
-        def get_by_boardname_and_rev(self, board_name: str, rev: str) -> ComponentTypeVar:
-            d = self.session.query(self.part_type).filter(self.part_type.board_name == board_name, self.part_type.rev == rev).one()
-            return d
-
-    class Resistance(GenericComponent[spec.Resistor]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_resistors_spec
-            self.table_item_display_order = spec.eedata_resistor_display_order
-            self.part_type = spec.Resistor
-
-            super().__init__(session)
-
-        @staticmethod
-        def print_formatted_from_spec(spec_dict: dict) -> str:
-            def get_value_and_operator_from_spec(spec_name: str) -> [typing.Union[float, int, None], typing.Union[None, str]]:
-                if spec_name not in spec_dict:
-                    return None, None
-                if (spec_dict[spec_name]) == dict:
-                    return spec_dict[spec_name]['val'], spec_dict[spec_name]['op']
-                else:
-                    return spec_dict[spec_name], None
-            """
-            Prints out a nice string depending on the given spec_list
-
-            Args:
-                spec_list: A list of dictionary containing the spec list in the format of for example
-                           [{'db_name': 'resistance': 'val': 1000}, {'db_name': 'tolerance': 'val': 0.1, 'op': '>'}].
-                           The db_name of `resistance` is required
-
-            Returns: A nicely formatted string describing the resistor, in the example above it will return `A 1k resistor with >1% tolerance`
-            """
-            resistance, op = get_value_and_operator_from_spec('resistance')
-            ret_str = "A {:} resistor".format(str(EngNumber(resistance)))
-
-            tolerance, op = get_value_and_operator_from_spec('tolerance')
-            if tolerance is not None:
-                ret_str += " with a "
-                if op is not None:
-                    ret_str += op
-                ret_str += "{:.1f}% tolerance".format(tolerance)
-
-            power, op = get_value_and_operator_from_spec('power')
-            if power is not None:
-                ret_str += " with "
-                if op is not None:
-                    ret_str += op
-                ret_str += "{:.1f}%".format(power)
-                ret_str += "W capability"
-
-            return ret_str
-
-    class Capacitors(GenericComponent[spec.Capacitor]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_capacitor_spec
-            self.table_item_display_order = spec.eedata_capacitor_display_order
-            self.part_type = spec.Capacitor
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Inductors(GenericComponent[spec.Inductor]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_inductor_spec
-            self.table_item_display_order = spec.eedata_inductor_display_order
-            self.part_type = spec.Inductor
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class ICs(GenericComponent[spec.IC]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_ic_spec
-            self.table_item_display_order = spec.eedata_ic_display_order
-            self.part_type = spec.IC
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Diodes(GenericComponent[spec.Diode]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_diode_spec
-            self.table_item_display_order = spec.eedata_diode_display_order
-            self.part_type = spec.Diode
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Crystals(GenericComponent[spec.Crystal]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_crystal_spec
-            self.table_item_display_order = spec.eedata_crystal_display_order
-            self.part_type = spec.Crystal
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class MOSFETs(GenericComponent[spec.MOSFET]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_mosfet_spec
-            self.table_item_display_order = spec.eedata_mosfet_display_order
-            self.part_type = spec.MOSFET
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class BJTs(GenericComponent[spec.BJT]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_bjt_spec
-            self.table_item_display_order = spec.eedata_bjt_display_order
-            self.part_type = spec.BJT
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Connectors(GenericComponent[spec.Connector]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_connector_spec
-            self.table_item_display_order = spec.eedata_connector_display_order
-            self.part_type = spec.Connector
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class LEDs(GenericComponent[spec.LED]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_led_spec
-            self.table_item_display_order = spec.eedata_led_display_order
-            self.part_type = spec.LED
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Fuses(GenericComponent[spec.Fuse]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_fuse_spec
-            self.table_item_display_order = spec.eedata_fuse_display_order
-            self.part_type = spec.Fuse
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class Buttons(GenericComponent[spec.Button]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_button_spec
-            self.table_item_display_order = spec.eedata_button_display_order
-            self.part_type = spec.Button
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
-
-    class MiscComps(GenericComponent[spec.MiscComp]):
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.table_item_spec = spec.eedata_misc_spec
-            self.table_item_display_order = spec.eedata_misc_display_order
-            self.part_type = spec.MiscComp
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-            super().__init__(session)
+        # todo: re-implement this resistance printing function
+        # @staticmethod
+        # def print_formatted_from_spec(spec_dict: dict) -> str:
+        #     def get_value_and_operator_from_spec(spec_name: str) -> [typing.Union[float, int, None], typing.Union[None, str]]:
+        #         if spec_name not in spec_dict:
+        #             return None, None
+        #         if (spec_dict[spec_name]) == dict:
+        #             return spec_dict[spec_name]['val'], spec_dict[spec_name]['op']
+        #         else:
+        #             return spec_dict[spec_name], None
+        #     """
+        #     Prints out a nice string depending on the given spec_list
+        #
+        #     Args:
+        #         spec_list: A list of dictionary containing the spec list in the format of for example
+        #                    [{'db_name': 'resistance': 'val': 1000}, {'db_name': 'tolerance': 'val': 0.1, 'op': '>'}].
+        #                    The db_name of `resistance` is required
+        #
+        #     Returns: A nicely formatted string describing the resistor, in the example above it will return `A 1k resistor with >1% tolerance`
+        #     """
+        #     resistance, op = get_value_and_operator_from_spec('resistance')
+        #     ret_str = "A {:} resistor".format(str(EngNumber(resistance)))
+        #
+        #     tolerance, op = get_value_and_operator_from_spec('tolerance')
+        #     if tolerance is not None:
+        #         ret_str += " with a "
+        #         if op is not None:
+        #             ret_str += op
+        #         ret_str += "{:.1f}% tolerance".format(tolerance)
+        #
+        #     power, op = get_value_and_operator_from_spec('power')
+        #     if power is not None:
+        #         ret_str += " with "
+        #         if op is not None:
+        #             ret_str += op
+        #         ret_str += "{:.1f}%".format(power)
+        #         ret_str += "W capability"
+        #
+        #     return ret_str
 
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
         self.db_conn = db_conn
         # The config table in the database
         self.config = self.ConfigTable(sessionmaker(self.db_conn)(), self.db_conn)
-        # Individual parts in the database
-        self.resistors = self.Resistance(sessionmaker(self.db_conn)())
-        self.capacitors = self.Capacitors(sessionmaker(self.db_conn)())
-        self.inductors = self.Inductors(sessionmaker(self.db_conn)())
-        self.ics = self.ICs(sessionmaker(self.db_conn)())
-        self.diodes = self.Diodes(sessionmaker(self.db_conn)())
-        self.crystals = self.Crystals(sessionmaker(self.db_conn)())
-        self.mosfets = self.MOSFETs(sessionmaker(self.db_conn)())
-        self.bjts = self.BJTs(sessionmaker(self.db_conn)())
-        self.connectors = self.Connectors(sessionmaker(self.db_conn)())
-        self.leds = self.LEDs(sessionmaker(self.db_conn)())
-        self.fuses = self.Fuses(sessionmaker(self.db_conn)())
-        self.buttons = self.Buttons(sessionmaker(self.db_conn)())
-        self.misc_cs = self.MiscComps(sessionmaker(self.db_conn)())
-        # PCBs, which aren't a component
-        self.pcbs = self.PCBs(sessionmaker(self.db_conn)())
 
-        self.components = {
-            'Resistors': self.resistors,
-            'Capacitors': self.capacitors,
-            'Inductors': self.inductors,
-            'ICs': self.ics,
-            'Diodes': self.diodes,
-            'Crystals': self.crystals,
-            'MOSFETs': self.mosfets,
-            'BJTs': self.bjts,
-            'Connectors': self.connectors,
-            'LEDs': self.leds,
-            'Fuses': self.fuses,
-            'Buttons': self.buttons,
-            'Misc': self.misc_cs,
-        }
         """ A helper dictionary containing all components (PCBs are not included)"""
 
-        spec.GenericItem.metadata.create_all(self.db_conn)
-        spec.PCB.metadata.create_all(self.db_conn)
+        # spec.GenericItem.metadata.create_all(self.db_conn)
+        # spec.PCB.metadata.create_all(self.db_conn)
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
