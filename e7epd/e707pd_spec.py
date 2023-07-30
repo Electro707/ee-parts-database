@@ -1,3 +1,6 @@
+import dataclasses
+import enum
+import typing
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy import Column, Integer, Float, String, Text, JSON, ForeignKey
 
@@ -6,6 +9,10 @@ default_string_len = 30
 _AlchemyDeclarativeBase = declarative_base()
 
 class Parts(_AlchemyDeclarativeBase):
+    """
+    A table for describing parts
+    All parameters for this part are foreign keys in the `parts_parameters` table.
+    """
     __tablename__ = 'parts'
 
     ipn = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False, unique=True)
@@ -16,12 +23,17 @@ class Parts(_AlchemyDeclarativeBase):
     package = Column(String(default_string_len))
     comments = Column(Text)
     datasheet = Column(Text)
-    user = Column(String(default_string_len))
+    user = Column(Integer, ForeignKey('users.id'), back_populates="parts", nullable=True)
     type = Column(Integer, ForeignKey('part_types.id'))
-    part_other_params = relationship("parts_parameters", backref="parts")
+    part_other_params = relationship("parts_parameters", back_populates="parts", cascade="all, delete")
 
 
 class ParameterTypes(_AlchemyDeclarativeBase):
+    """
+    This table is for part types (resistors, capacitors, etc)
+
+    This table can be foreign keyed by the `parts` and `pcb_assembly_parts` table
+    """
     __tablename__ = 'part_types'
 
     id = Column(Integer, primary_key=True)
@@ -31,6 +43,9 @@ class ParameterTypes(_AlchemyDeclarativeBase):
 
 
 class PartsParameters(_AlchemyDeclarativeBase):
+    """
+    This table has the part's parameters, which each row references a specific part in the `part` table
+    """
     __tablename__ = 'parts_parameters'
 
     id = Column(Integer, primary_key=True)
@@ -47,10 +62,10 @@ class PCBAssembly(_AlchemyDeclarativeBase):
     storage = Column(String(default_string_len))
     board_name = Column(String(default_string_len), nullable=False)
     rev = Column(String(default_string_len), nullable=False)
-    parts = Column(Integer, ForeignKey('pcb_parts.id'))
+    parts = Column(Integer, ForeignKey('pcb_assembly_parts.id'))
 
 class PCBParameters(_AlchemyDeclarativeBase):
-    __tablenmame__ = 'pcb_assembly_parts'
+    __tablename__ = 'pcb_assembly_parts'
 
     id = Column(Integer, primary_key=True)
     pcb_id = Column(Integer, ForeignKey('pcb_assembly.id'))
@@ -59,34 +74,60 @@ class PCBParameters(_AlchemyDeclarativeBase):
     type = Column(Integer, ForeignKey('part_types.id'))
     text_spec = Column(String(default_string_len))
 
+class Users(_AlchemyDeclarativeBase):
+    """
+    Table for storing different users
+    """
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(default_string_len))   # Can be null for a non-specific part
+    email = Column(String(default_string_len), nullable=True)
+    parts = relationship("parts")
+
 
 # Outline the different parts storage specifications
 # {'db_name': "", 'showcase_name': "", 'db_type': "", 'show_as_type': "normal", 'required': False, },
 
+class ShowAsEnum(enum.Enum):
+    normal = enum.auto()            # Display it as regular text/number
+    engineering = enum.auto()       # Show it in engineering notation
+    precentage = enum.auto()        # Show it as a percentage
+    fraction = enum.auto()
+
+
+@dataclasses.dataclass
+class SpecLineItem:
+    db_name: str            # how this gets stored in the database
+    showcase_name: str      # How to showcase this line item to the user
+    shows_as: ShowAsEnum    # How to display it to user
+    input_type: type        # What Python type to use
+    required: bool          # Is this item required?
+
 """
-    The spec for components
+    The spec for any component. NOTE: this MUST match the parts table's keys
 """
-eedata_generic_spec = [
-    {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
-    {'db_name': 'ipn', 'showcase_name': 'IPN', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'mfr_part_numb', 'showcase_name': 'Mfr Part #', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'manufacturer', 'showcase_name': 'Manufacturer', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'package', 'showcase_name': 'Package', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'datasheet', 'showcase_name': 'Datasheet', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'user', 'showcase_name': 'User', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
+eedata_generic_spec = [     # type: typing.List[SpecLineItem]
+    SpecLineItem('stock', 'Stock', ShowAsEnum.normal, int, True),
+    SpecLineItem('ipn', 'IPN', ShowAsEnum.normal, str, True),
+    SpecLineItem('mfr_part_numb', 'Mfr Part #', ShowAsEnum.normal, str, False),
+    SpecLineItem('manufacturer', 'Manufacturer', ShowAsEnum.normal, str, False),
+    SpecLineItem('package', 'Package', ShowAsEnum.normal, str, True),
+    SpecLineItem('storage', 'Storage Location', ShowAsEnum.normal, str, False),
+    SpecLineItem('comments', 'Comments', ShowAsEnum.normal, str, False),
+    SpecLineItem('datasheet', 'Datasheet', ShowAsEnum.normal, str, False),
+    # SpecLineItem('user', 'User', ShowAsEnum.normal, str, False),      # Handled separately
 ]
-eedata_generic_items = [i['db_name'] for i in eedata_generic_spec]
+eedata_generic_items = [i.db_name for i in eedata_generic_spec]
 eedata_generic_items_preitems = ['stock', 'mfr_part_numb', 'manufacturer']
 eedata_generic_items_postitems = ['package', 'storage', 'comments', 'datasheet', 'user']
 
-eedata_resistors_params = [
-    {'db_name': 'resistance', 'showcase_name': 'Resistance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
-    {'db_name': 'tolerance', 'showcase_name': 'Tolerance', 'shows_as': 'percentage', 'input_type': 'float', 'required': False, },
-    {'db_name': 'power', 'showcase_name': 'Power Rating', 'shows_as': 'normal', 'input_type': 'float', 'required': False, }
+eedata_resistors_params = [     # type: typing.List[SpecLineItem]
+    SpecLineItem('resistance', 'Resistance', ShowAsEnum.engineering, float, True),
+    SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False),
+    SpecLineItem('power', 'Power Rating', ShowAsEnum.fraction, float, False),
 ]
-eedata_resistor_display_order = eedata_generic_items_preitems+['resistance', 'tolerance', 'power']+eedata_generic_items_postitems
+eedata_resistor_display_order = eedata_generic_items_preitems+[i.db_name for i in eedata_resistors_params]+eedata_generic_items_postitems
 
 eedata_capacitor_params = eedata_generic_spec + [
     {'db_name': 'capacitance', 'showcase_name': 'Capacitance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },

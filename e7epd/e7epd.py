@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import json
 import os
@@ -17,6 +18,9 @@ import e7epd.e707pd_spec as spec
 # Version of the database spec
 database_spec_rev = '0.7.0-dev'
 
+# A safety check to ensure the right version of sqlAlchemy is loaded
+# if sqlalchemy.__version__ != "1.4.0":
+#     raise ImportError(f"SQLAlchemy version is not 1.4.0, but is {sqlalchemy.__version__}")
 
 class InputException(Exception):
     """ Exception that gets raised on any input error """
@@ -43,11 +47,13 @@ class NegativeStock(Exception):
         super().__init__('Stock will go to negative')
 
 
-ComponentTypeVar = typing.TypeVar('ComponentTypeVar', bound=spec.GenericItem)
-
-
 class E7EPD:
     class ConfigTable:
+        """
+        A generic configuration table. Currently, this is only used to store a db_ver key
+
+        This creates a table (`e7epd_config`) with a key-value style data scheme.
+        """
         _Base = declarative_base()
 
         class _DataBase(_Base):
@@ -91,222 +97,222 @@ class E7EPD:
         def store_current_db_version(self):
             self.store_info('db_ver', database_spec_rev)
 
-    class GenericItem(typing.Generic[ComponentTypeVar]):
-        """ This is a generic part constructor, which other components (like Resistors) will base off of """
-        def __init__(self, session: sqlalchemy.orm.Session):
-            self.session = session
-            self.table_item_spec: list
-            self.table_item_display_order: list
-            self.part_type: ComponentTypeVar
-
-            if not hasattr(self, 'table_item_spec'):
-                self.table_item_spec = None
-            if not hasattr(self, 'table_item_display_order'):
-                self.table_item_display_order = None
-            if not hasattr(self, 'part_type'):
-                self.part_type = None
-
-            self.table_name = self.part_type.__tablename__
-            self.log = logging.getLogger(self.part_type.__tablename__)
-
-        def create_part(self, part_info: ComponentTypeVar):
-            """
-                Function to create a part for the given info
-
-                Args:
-                     part_info (GenericItem): The part item class to add to the database
-            """
-            # Check if key already exists in table
-            for item in self.table_item_spec:
-                if item['required'] is True:
-                    if getattr(part_info, item['db_name']) is None:
-                        raise InputException("Did not assign key %s, but it's required" % item['db_name'])
-            # Create a new part inside the database
-            self._insert_part_in_db(part_info)
-
-        def _insert_part_in_db(self, part_info: ComponentTypeVar):
-            """ Internal function to insert a part into the database """
-            # Run an insert command into the database
-            self.log.debug('Inserting %s into database' % part_info)
-            self.session.add(part_info)
-            self.session.commit()
-
-        # def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int) -> int:
-        #     """ Appends stock to a part by the manufacturer part number
-        #
-        #     Args:
-        #         mfr_part_numb (str): The manufacturer number to add the stock to
-        #         append_by: How much stock to add
-        #
-        #     Returns:
-        #         The new stock of the part after the appending
-        #
-        #     Raises:
-        #         EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
-        #     """
-        #     part = self.get_part_by_mfr_part_numb(mfr_part_numb)
-        #     part.stock += append_by
-        #     self.session.commit()
-        #     return part.stock
-
-        # Deprecated as it should be done thru a returned querry then substracting the amount there
-        # def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int) -> int:
-        #     """ Removes stock from a part by the manufacturer part number
-        #
-        #     Args:
-        #         mfr_part_numb (str): The manufacturer number to add the stock to
-        #         remove_by: How much stock to remove from the part
-        #
-        #     Returns:
-        #         The new stock of the part after removal
-        #
-        #     Raises:
-        #         EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
-        #     """
-        #     part = self.get_part_by_mfr_part_numb(mfr_part_numb)
-        #     if part.stock - remove_by < 0:
-        #         raise NegativeStock(part.stock)
-        #     part.stock -= remove_by
-        #     self.session.commit()
-        #     return part.stock
-
-        def get_all_parts(self) -> typing.Iterable[ComponentTypeVar]:
-            """ Get all parts in the database
-
-                Returns:
-                    EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
-            """
-            return self.session.query(self.part_type).all()
-
-        def is_database_empty(self):
-            """ Checks if the database is empty
-
-            Returns:
-                True if the database is empty, False if not
-            """
-            d = self.session.query(self.part_type).count()
-            self.log.debug('Number of parts in database for %s: %s' % (self.table_name, d))
-            if d == 0:
-                return True
-            return False
-
-        def commit(self):
-            """
-                Commits any changes done to part(s)
-            """
-            self.session.commit()
-
-        def rollback(self):
-            """
-                Roll back changes done to part(s)
-            """
-            self.session.rollback()
-
-    class GenericComponent(GenericItem[ComponentTypeVar]):
-        def get_all_mfr_part_numb_in_db(self) -> list:
-            """ Get all manufaturer part numbers as a list
-
-            Returns:
-                A list of all manufacturer part numbers in the database
-            """
-            d = self.session.query(self.part_type).with_entities(self.part_type.mfr_part_numb).all()
-            return [p.mfr_part_numb for p in d]
-
-        def get_sorted_parts(self, search_filter: list):
-            q = self.session.query(self.part_type)
-
-            if q.count() == 0:
-                raise EmptyInDatabase()
-
-            filter_const = []
-            for item in search_filter:
-                if 'op' in item:
-                    if item['op'] == '>':
-                        filter_const.append(getattr(self.part_type, item['db_name']) > item['val'])
-                    elif item['op'] == '>=':
-                        filter_const.append(getattr(self.part_type, item['db_name']) >= item['val'])
-                    elif item['op'] == '<':
-                        filter_const.append(getattr(self.part_type, item['db_name']) < item['val'])
-                    elif item['op'] == '<=':
-                        filter_const.append(getattr(self.part_type, item['db_name']) <= item['val'])
-                    elif item['op'] == '==':
-                        filter_const.append(getattr(self.part_type, item['db_name']) == item['val'])
-                    else:
-                        raise UserWarning("Invalid Operator %s" % item['op'])
-                else:
-                    filter_const.append(getattr(self.part_type, item['db_name']) == item['val'])
-
-            d = q.filter(*filter_const).all()
-            return d
-
-        def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> ComponentTypeVar:
-            """
-                Function that returns parts parameters by part ID
-
-                Args:
-                    mfr_part_numb (str): The part's manufacturer part number
-
-                Returns:
-                    The part's item class
-
-                Raises:
-                    EmptyInDatabase: If the SQL ID does not exist in the database
-            """
-            d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).one()
-            return d
-
-        def delete_part_by_mfr_number(self, mfr_part_numb: str):
-            """
-                Function to delete a part by the manufacturer part number
-
-                Args:
-                    mfr_part_numb: The manufacturer part number of the part to delete
-
-                Raises:
-                     EmptyInDatabase: Raises this exception if there is no part in the database with that manufacturer part number
-            """
-            self.log.debug("Deleting part %s" % mfr_part_numb)
-            self.session.delete(self.get_part_by_mfr_part_numb(mfr_part_numb))
-
-        def check_if_already_in_db(self, part_info: ComponentTypeVar):
-            """ Checks if a given part is already in the database
-                Currently it's done through checking for a match with the manufacturer part number
-
-                Args:
-                    part_info (GenericItem): A part item class
-
-                Raises:
-                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
-                    InputException: If the manufacturer part number is None, this will get raised
-            """
-            return self.check_if_already_in_db_by_manuf(part_info.mfr_part_numb)
-
-        def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
-            """
-                Function that checks if a part is already in the database. A generic part just goes by manufacturer
-                part number, otherwise a component-specific callback needs to be added (to look up generic parts for
-                example without a manufacturer part number)
-
-                Args:
-                    mfr_part_numb (str): The manufacturer part number to look for.
-
-                Returns:
-                    None if the part doesn't exist in the database, The SQL ID if it does
-
-                Raises:
-                    UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
-                    InputException: If the manufacturer part number is None, this will get raised
-            """
-            if mfr_part_numb is not None:
-                d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).all()
-                if len(d) == 0:
-                    return None
-                elif len(d) == 1:
-                    return d[0].id
-                else:
-                    raise UserWarning("There is more than 1 entry for a manufacturer part number")
-            else:
-                raise InputException("Did not give a manufacturer part number")
+    # class GenericItem(typing.Generic[ComponentTypeVar]):
+    #     """ This is a generic part constructor, which other components (like Resistors) will base off of """
+    #     def __init__(self, session: sqlalchemy.orm.Session):
+    #         self.session = session
+    #         self.table_item_spec: list
+    #         self.table_item_display_order: list
+    #         self.part_type: ComponentTypeVar
+    #
+    #         if not hasattr(self, 'table_item_spec'):
+    #             self.table_item_spec = None
+    #         if not hasattr(self, 'table_item_display_order'):
+    #             self.table_item_display_order = None
+    #         if not hasattr(self, 'part_type'):
+    #             self.part_type = None
+    #
+    #         self.table_name = self.part_type.__tablename__
+    #         self.log = logging.getLogger(self.part_type.__tablename__)
+    #
+    #     def create_part(self, part_info: ComponentTypeVar):
+    #         """
+    #             Function to create a part for the given info
+    #
+    #             Args:
+    #                  part_info (GenericItem): The part item class to add to the database
+    #         """
+    #         # Check if key already exists in table
+    #         for item in self.table_item_spec:
+    #             if item['required'] is True:
+    #                 if getattr(part_info, item['db_name']) is None:
+    #                     raise InputException("Did not assign key %s, but it's required" % item['db_name'])
+    #         # Create a new part inside the database
+    #         self._insert_part_in_db(part_info)
+    #
+    #     def _insert_part_in_db(self, part_info: ComponentTypeVar):
+    #         """ Internal function to insert a part into the database """
+    #         # Run an insert command into the database
+    #         self.log.debug('Inserting %s into database' % part_info)
+    #         self.session.add(part_info)
+    #         self.session.commit()
+    #
+    #     # def append_stock_by_manufacturer_part_number(self, mfr_part_numb: str, append_by: int) -> int:
+    #     #     """ Appends stock to a part by the manufacturer part number
+    #     #
+    #     #     Args:
+    #     #         mfr_part_numb (str): The manufacturer number to add the stock to
+    #     #         append_by: How much stock to add
+    #     #
+    #     #     Returns:
+    #     #         The new stock of the part after the appending
+    #     #
+    #     #     Raises:
+    #     #         EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+    #     #     """
+    #     #     part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+    #     #     part.stock += append_by
+    #     #     self.session.commit()
+    #     #     return part.stock
+    #
+    #     # Deprecated as it should be done thru a returned querry then substracting the amount there
+    #     # def remove_stock_by_manufacturer_part_number(self, mfr_part_numb: str, remove_by: int) -> int:
+    #     #     """ Removes stock from a part by the manufacturer part number
+    #     #
+    #     #     Args:
+    #     #         mfr_part_numb (str): The manufacturer number to add the stock to
+    #     #         remove_by: How much stock to remove from the part
+    #     #
+    #     #     Returns:
+    #     #         The new stock of the part after removal
+    #     #
+    #     #     Raises:
+    #     #         EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+    #     #     """
+    #     #     part = self.get_part_by_mfr_part_numb(mfr_part_numb)
+    #     #     if part.stock - remove_by < 0:
+    #     #         raise NegativeStock(part.stock)
+    #     #     part.stock -= remove_by
+    #     #     self.session.commit()
+    #     #     return part.stock
+    #
+    #     def get_all_parts(self) -> typing.Iterable[ComponentTypeVar]:
+    #         """ Get all parts in the database
+    #
+    #             Returns:
+    #                 EmptyInDatabase: Raises this if the manufacturer part number does not exist in the database
+    #         """
+    #         return self.session.query(self.part_type).all()
+    #
+    #     def is_database_empty(self):
+    #         """ Checks if the database is empty
+    #
+    #         Returns:
+    #             True if the database is empty, False if not
+    #         """
+    #         d = self.session.query(self.part_type).count()
+    #         self.log.debug('Number of parts in database for %s: %s' % (self.table_name, d))
+    #         if d == 0:
+    #             return True
+    #         return False
+    #
+    #     def commit(self):
+    #         """
+    #             Commits any changes done to part(s)
+    #         """
+    #         self.session.commit()
+    #
+    #     def rollback(self):
+    #         """
+    #             Roll back changes done to part(s)
+    #         """
+    #         self.session.rollback()
+    #
+    # class GenericComponent(GenericItem[ComponentTypeVar]):
+    #     def get_all_mfr_part_numb_in_db(self) -> list:
+    #         """ Get all manufaturer part numbers as a list
+    #
+    #         Returns:
+    #             A list of all manufacturer part numbers in the database
+    #         """
+    #         d = self.session.query(self.part_type).with_entities(self.part_type.mfr_part_numb).all()
+    #         return [p.mfr_part_numb for p in d]
+    #
+    #     def get_sorted_parts(self, search_filter: list):
+    #         q = self.session.query(self.part_type)
+    #
+    #         if q.count() == 0:
+    #             raise EmptyInDatabase()
+    #
+    #         filter_const = []
+    #         for item in search_filter:
+    #             if 'op' in item:
+    #                 if item['op'] == '>':
+    #                     filter_const.append(getattr(self.part_type, item['db_name']) > item['val'])
+    #                 elif item['op'] == '>=':
+    #                     filter_const.append(getattr(self.part_type, item['db_name']) >= item['val'])
+    #                 elif item['op'] == '<':
+    #                     filter_const.append(getattr(self.part_type, item['db_name']) < item['val'])
+    #                 elif item['op'] == '<=':
+    #                     filter_const.append(getattr(self.part_type, item['db_name']) <= item['val'])
+    #                 elif item['op'] == '==':
+    #                     filter_const.append(getattr(self.part_type, item['db_name']) == item['val'])
+    #                 else:
+    #                     raise UserWarning("Invalid Operator %s" % item['op'])
+    #             else:
+    #                 filter_const.append(getattr(self.part_type, item['db_name']) == item['val'])
+    #
+    #         d = q.filter(*filter_const).all()
+    #         return d
+    #
+    #     def get_part_by_mfr_part_numb(self, mfr_part_numb: str) -> ComponentTypeVar:
+    #         """
+    #             Function that returns parts parameters by part ID
+    #
+    #             Args:
+    #                 mfr_part_numb (str): The part's manufacturer part number
+    #
+    #             Returns:
+    #                 The part's item class
+    #
+    #             Raises:
+    #                 EmptyInDatabase: If the SQL ID does not exist in the database
+    #         """
+    #         d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).one()
+    #         return d
+    #
+    #     def delete_part_by_mfr_number(self, mfr_part_numb: str):
+    #         """
+    #             Function to delete a part by the manufacturer part number
+    #
+    #             Args:
+    #                 mfr_part_numb: The manufacturer part number of the part to delete
+    #
+    #             Raises:
+    #                  EmptyInDatabase: Raises this exception if there is no part in the database with that manufacturer part number
+    #         """
+    #         self.log.debug("Deleting part %s" % mfr_part_numb)
+    #         self.session.delete(self.get_part_by_mfr_part_numb(mfr_part_numb))
+    #
+    #     def check_if_already_in_db(self, part_info: ComponentTypeVar):
+    #         """ Checks if a given part is already in the database
+    #             Currently it's done through checking for a match with the manufacturer part number
+    #
+    #             Args:
+    #                 part_info (GenericItem): A part item class
+    #
+    #             Raises:
+    #                 UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
+    #                 InputException: If the manufacturer part number is None, this will get raised
+    #         """
+    #         return self.check_if_already_in_db_by_manuf(part_info.mfr_part_numb)
+    #
+    #     def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
+    #         """
+    #             Function that checks if a part is already in the database. A generic part just goes by manufacturer
+    #             part number, otherwise a component-specific callback needs to be added (to look up generic parts for
+    #             example without a manufacturer part number)
+    #
+    #             Args:
+    #                 mfr_part_numb (str): The manufacturer part number to look for.
+    #
+    #             Returns:
+    #                 None if the part doesn't exist in the database, The SQL ID if it does
+    #
+    #             Raises:
+    #                 UserWarning: This should NEVER be triggered unless something went terribly wrong or if you manually edited the database. If the former, please create an bug entry on the project's Github page with the traceback
+    #                 InputException: If the manufacturer part number is None, this will get raised
+    #         """
+    #         if mfr_part_numb is not None:
+    #             d = self.session.query(self.part_type).filter_by(mfr_part_numb=mfr_part_numb).all()
+    #             if len(d) == 0:
+    #                 return None
+    #             elif len(d) == 1:
+    #                 return d[0].id
+    #             else:
+    #                 raise UserWarning("There is more than 1 entry for a manufacturer part number")
+    #         else:
+    #             raise InputException("Did not give a manufacturer part number")
 
         # todo: re-implement this resistance printing function
         # @staticmethod
@@ -350,92 +356,90 @@ class E7EPD:
 
     def __init__(self, db_conn: sqlalchemy.future.Engine):
         self.log = logging.getLogger('Database')
-        self.db_conn = db_conn
+        self.db_conn = db_conn              # Store the connection engine
+
+        self.session = sessionmaker(bind=self.db_conn)()
+
         # The config table in the database
-        self.config = self.ConfigTable(sessionmaker(self.db_conn)(), self.db_conn)
+        self.config = self.ConfigTable(self.session, self.db_conn)
 
-        """ A helper dictionary containing all components (PCBs are not included)"""
-
-        # spec.GenericItem.metadata.create_all(self.db_conn)
-        # spec.PCB.metadata.create_all(self.db_conn)
+        # Create orm table in database
+        spec.Parts.metadata.create_all(self.db_conn)
+        spec.ParameterTypes.metadata.create_all(self.db_conn)
+        spec.PartsParameters.metadata.create_all(self.db_conn)
+        spec.PCBAssembly.metadata.create_all(self.db_conn)
+        spec.PCBParameters.metadata.create_all(self.db_conn)
+        spec.Users.metadata.create_all(self.db_conn)
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
             self.config.store_current_db_version()
+
+    def add_user(self, u: spec.Users):
+        # Do a check to ensure the same name does not exist
+        co = self.session.query(spec.Users).filter_by(name=u.name).count()
+        if co != 0:
+            raise InputException("The user (by name) already exists in the database")
+        self.session.add(u)
 
     def close(self):
         """
             Commits to the database and closes the database connection.
             Call this when exiting your program
         """
-        for c in self.components.values():
-            c.session.commit()
-            c.session.flush()
-            c.session.close()
+        self.session.commit()
+        self.session.flush()
+        self.session.close()
 
     def save(self):
         """
             Saves any changes done to the database
         """
-        for c in self.components.values():
-            c.session.commit()
+        self.session.commit()
 
-    def get_component_by_table_name(self, table_name: str):
-        for c in self.components:
-            if self.components[c].table_name == table_name:
-                return c, self.components[c]
-
-    def check_if_already_in_db_by_manuf(self, mfr_part_numb: str) -> (None, int):
+    def check_if_already_in_db_by_ipn(self, ipn: str) -> (None, int):
         """
-        Checks if a manufacturer part number is already in the database for all component types
+        Checks if an ipn is already in the database
 
         Args:
-            mfr_part_numb: The manufacturer part number to look for
+            ipn: The internal part number to look for
 
-        Returns: A tuple, the first index beingn the SQL ID, the second being the component GenericPart class of the part
+        Returns: A tuple, the first index being the SQL ID, the second being the component GenericPart class of the part
         """
-        for c in self.components:
-            p = self.components[c].check_if_already_in_db_by_manuf(mfr_part_numb)
-            if p is not None:
-                return p, self.components[c]
-        return None, None
+        if ipn is not None:
+            d = self.session.query(spec.Parts).filter_by(ipn=ipn).all()
+            if len(d) == 0:
+                return None
+            elif len(d) == 1:
+                return d[0].id
+            else:
+                raise UserWarning("There is more than 1 entry for a manufacturer part number")
+        else:
+            raise InputException("Did not give a manufacturer part number")
 
-    def get_all_mfr_part_numb_in_db(self):
+    def get_all_ipb_in_db(self):
         """
         Gets all stored manufacturer part numbers in the database
 
         Returns: A list containing all manufacturer part number
         """
-        all_mfg_list = []
-        for c in self.components:
-            all_mfg_list += self.components[c].get_all_mfr_part_numb_in_db()
-        return all_mfg_list
-
-    def get_all_component_part_number(self) -> dict:
-        """
-        Gets all component's manufacturer part number in the database
-        NOTE: This excludes PCBs as it is not a component
-
-        Returns: A dictionary of lists containing all part numbers per component
-        """
-        all_mfr_list = {}
-        for c in self.components:
-            all_mfr_list[c] = self.components[c].get_all_mfr_part_numb_in_db()
-        return all_mfr_list
+        d = self.session.query(spec.Parts).with_entities(spec.Parts.ipn).all()
+        return [p.ipn for p in d]
 
     def wipe_database(self):
         """
-            Wipes the component databases
+        Wipes the component databases
         """
-        for c in self.components.values():
-            c.part_type.metadata.drop_all(self.db_conn)
-            c.session.commit()
-            # Recreate table
-            c.part_type.metadata.create_all(self.db_conn)
+        spec.Parts.metadata.drop_all(self.db_conn)
+        self.session.commit()
+        # Recreate table
+        spec.Parts.metadata.create_all(self.db_conn)
 
     def update_database(self):
         """
-            Updates the database to the most recent revision
+        Updates the database to the most recent revision
+
+        todo: this function needs to be updated for 0.7 changes
         """
         def mydefault(context):
             return context.get_current_parameters()['name']
@@ -496,3 +500,6 @@ class E7EPD:
             result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
         with open(new_db_file, 'x') as f:
             json.dump(result, f, indent=4)
+
+
+Resistor = dataclasses.make_dataclass('Resistor', [(i.db_name, i.input_type) for i in spec.eedata_resistors_params])
