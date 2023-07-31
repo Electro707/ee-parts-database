@@ -368,7 +368,7 @@ class E7EPD:
         spec.ParameterTypes.metadata.create_all(self.db_conn)
         spec.PartsParameters.metadata.create_all(self.db_conn)
         spec.PCBAssembly.metadata.create_all(self.db_conn)
-        spec.PCBParameters.metadata.create_all(self.db_conn)
+        spec.PCBAssemblyParts.metadata.create_all(self.db_conn)
         spec.Users.metadata.create_all(self.db_conn)
 
         # If the DB version is None (if the config table was just created), then populate the current version
@@ -381,6 +381,10 @@ class E7EPD:
         if co != 0:
             raise InputException("The user (by name) already exists in the database")
         self.session.add(u)
+
+    def get_user_by_name(self, name: str):
+        co = self.session.query(spec.Users).filter_by(name=name).first()
+        return co
 
     def close(self):
         """
@@ -500,6 +504,3 @@ class E7EPD:
             result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
         with open(new_db_file, 'x') as f:
             json.dump(result, f, indent=4)
-
-
-Resistor = dataclasses.make_dataclass('Resistor', [(i.db_name, i.input_type) for i in spec.eedata_resistors_params])

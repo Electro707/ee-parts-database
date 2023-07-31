@@ -16,16 +16,16 @@ class Parts(_AlchemyDeclarativeBase):
     __tablename__ = 'parts'
 
     ipn = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False, unique=True)
-    mfr_part_numb = Column(String(default_string_len), nullable=False)
+    mfr_part_numb = Column(String(default_string_len))
     stock = Column(Integer, nullable=False)
     manufacturer = Column(String(default_string_len))
     storage = Column(String(default_string_len))
     package = Column(String(default_string_len))
     comments = Column(Text)
     datasheet = Column(Text)
-    user = Column(Integer, ForeignKey('users.id'), back_populates="parts", nullable=True)
+    user = Column(Integer, ForeignKey('users.id'), nullable=True)
     type = Column(Integer, ForeignKey('part_types.id'))
-    part_other_params = relationship("parts_parameters", back_populates="parts", cascade="all, delete")
+    params = relationship("PartsParameters", backref="parts", cascade="all, delete")
 
 
 class ParameterTypes(_AlchemyDeclarativeBase):
@@ -38,8 +38,8 @@ class ParameterTypes(_AlchemyDeclarativeBase):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(default_string_len))
-    part = relationship("parts")                        # Reference to the part it uses
-    pcb_parts = relationship("pcb_assembly_parts")      # Reference to the part it uses
+    part = relationship("Parts")                        # Reference to the part it uses
+    pcb_parts = relationship("PCBAssemblyParts")      # Reference to the part it uses
 
 
 class PartsParameters(_AlchemyDeclarativeBase):
@@ -50,7 +50,7 @@ class PartsParameters(_AlchemyDeclarativeBase):
 
     id = Column(Integer, primary_key=True)
     ipn = Column(String(default_string_len), ForeignKey('parts.ipn'))
-    key = Column(Float, nullable=False)
+    key = Column(String(default_string_len), nullable=False)
     value = Column(String(default_string_len))
 
 class PCBAssembly(_AlchemyDeclarativeBase):
@@ -64,7 +64,7 @@ class PCBAssembly(_AlchemyDeclarativeBase):
     rev = Column(String(default_string_len), nullable=False)
     parts = Column(Integer, ForeignKey('pcb_assembly_parts.id'))
 
-class PCBParameters(_AlchemyDeclarativeBase):
+class PCBAssemblyParts(_AlchemyDeclarativeBase):
     __tablename__ = 'pcb_assembly_parts'
 
     id = Column(Integer, primary_key=True)
@@ -81,9 +81,9 @@ class Users(_AlchemyDeclarativeBase):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(default_string_len))   # Can be null for a non-specific part
+    name = Column(String(default_string_len))
     email = Column(String(default_string_len), nullable=True)
-    parts = relationship("parts")
+    parts = relationship("Parts")
 
 
 # Outline the different parts storage specifications
@@ -118,9 +118,28 @@ eedata_generic_spec = [     # type: typing.List[SpecLineItem]
     SpecLineItem('datasheet', 'Datasheet', ShowAsEnum.normal, str, False),
     # SpecLineItem('user', 'User', ShowAsEnum.normal, str, False),      # Handled separately
 ]
+@dataclasses.dataclass
+class _GenericPartClass:
+    stock: int
+    ipn: str
+    package: str
+    mfr_part_numb: str = None
+    manufacturer: str = None
+    storage: str = None
+    comments: str = None
+    datasheet: str = None
+    user: Users = None
+
 eedata_generic_items = [i.db_name for i in eedata_generic_spec]
 eedata_generic_items_preitems = ['stock', 'mfr_part_numb', 'manufacturer']
 eedata_generic_items_postitems = ['package', 'storage', 'comments', 'datasheet', 'user']
+
+
+@dataclasses.dataclass
+class Resistor(_GenericPartClass):
+    resistance: float = None        # todo: have this be optional while still sub-classing _GenericPartClass
+    tolerance: float = None
+    power: float = None
 
 eedata_resistors_params = [     # type: typing.List[SpecLineItem]
     SpecLineItem('resistance', 'Resistance', ShowAsEnum.engineering, float, True),
