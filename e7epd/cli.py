@@ -3,6 +3,7 @@
     E707PD Python CLI Application
     Rev 0.5
 """
+import dataclasses
 # External Modules Import
 import subprocess
 import logging
@@ -22,10 +23,7 @@ import os
 import sys
 import typing
 import json
-import sqlalchemy
-import sqlalchemy.future
-import sqlalchemy.orm
-import sqlalchemy.exc
+import pymongo
 import pkg_resources
 import re
 # Local Modules Import
@@ -57,6 +55,19 @@ def CLIConfig_config_db_list_checker(func):
 
 
 class CLIConfig:
+    @dataclasses.dataclass
+    class _Config:
+        last_db: str = ""
+        db_list: dict = dataclasses.field(default_factory=dict)
+
+        # https://stackoverflow.com/questions/61426232/update-dataclass-fields-from-a-dict-in-python
+        def from_dict(self, d: dict):
+            for key, value in d.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+                else:
+                    raise UserWarning(f"This dataclass does have have attribute {key}")
+
     class NoDatabaseException(Exception):
         def __init__(self):
             super().__init__("No Database")
@@ -69,83 +80,73 @@ class CLIConfig:
         if not pkg_resources.resource_isdir(__name__, 'data'):
             os.mkdir(pkg_resources.resource_filename(__name__, "data"))
         self.file_path = pkg_resources.resource_filename(__name__, "data/cli_config.json")
-        self.config = {}
+        self.config = self._Config()
         if os.path.isfile(self.file_path):
             with open(self.file_path) as f:
-                self.config = json.load(f)
+                self.config.from_dict(json.load(f))
 
     def save(self):
         with open(self.file_path, 'w') as f:
-            json.dump(self.config, f, indent=4)
+            json.dump(dataclasses.asdict(self.config), f, indent=4)
 
     @CLIConfig_config_db_list_checker
-    def get_database_connection(self, database_name: str = None) -> sqlalchemy.future.Engine:
+    def get_database_connection(self, database_name: str = None) -> pymongo.MongoClient:
         if database_name is None:
             if 'last_db' not in self.config:
                 raise self.NoLastDBSelectionException()
-            database_name = self.config['last_db']
-        if database_name not in self.config['db_list']:
+            database_name = self.config.last_db
+        if database_name not in self.config.db_list:
             raise self.NoLastDBSelectionException()
 
-        self.config['last_db'] = database_name
-        if self.config['db_list'][database_name]['type'] == 'local':
-            return sqlalchemy.create_engine("sqlite:///{}".format(pkg_resources.resource_filename(__name__, 'data/'+self.config['db_list'][database_name]['filename'])))
-        elif self.config['db_list'][database_name]['type'] == 'mysql_server':
-            return sqlalchemy.create_engine("mysql://{}:{}@{}/{}".format(self.config['db_list'][database_name]['username'],
-                                                                         self.config['db_list'][database_name]['password'],
-                                                                         self.config['db_list'][database_name]['db_host'],
-                                                                         self.config['db_list'][database_name]['db_name']))
-        elif self.config['db_list'][database_name]['type'] == 'postgress_server':
-            return sqlalchemy.create_engine("postgresql://{}:{}@{}/{}".format(self.config['db_list'][database_name]['username'],
-                                                                              self.config['db_list'][database_name]['password'],
-                                                                              self.config['db_list'][database_name]['db_host'],
-                                                                              self.config['db_list'][database_name]['db_name']))
+        self.config.last_db = database_name
+        if self.config.db_list[database_name]['type'] == 'local':
+            raise UserWarning("Not supported, deprecated in 0.7.0")
+        elif self.config.db_list[database_name]['type'] == 'mysql_server':
+            raise UserWarning("Not supported, deprecated in 0.7.0")
+        elif self.config.db_list[database_name]['type'] == 'postgress_server':
+            raise UserWarning("Not supported, deprecated in 0.7.0")
+        elif self.config.db_list[database_name]['type'] == 'mongodb':
+            # todo: enable authentication login
+            # todo: enable socket connection
+            return pymongo.MongoClient("mongodb://{}:27017/".format(self.config.db_list[database_name]['db_host']))
 
     @CLIConfig_config_db_list_checker
     def get_database_connection_info(self, database_name: str = None) -> dict:
-        return self.config['db_list'][database_name]
+        return self.config.db_list[database_name]
 
     @CLIConfig_config_db_list_checker
     def get_stored_db_names(self) -> list:
-        return self.config['db_list'].keys()
+        return list(self.config.db_list.keys())
 
     def get_selected_database(self) -> str:
-        return self.config['last_db']
+        return self.config.last_db
 
     def set_last_db(self, database_name: str):
-        self.config['last_db'] = database_name
+        self.config.last_db = database_name
 
     def save_database_as_sqlite(self, database_name: str, file_name: str):
-        if '.db' not in file_name:
-            raise UserWarning("No .db externsion in filename")
-        if 'db_list' not in self.config:
-            self.config['db_list'] = {}
-        if database_name not in self.config['db_list']:
-            self.config['db_list'][database_name] = {}
-        self.config['db_list'][database_name]['type'] = 'local'
-        self.config['db_list'][database_name]['filename'] = file_name
-        self.save()
+        raise DeprecationWarning("Removed in 0.7.0")
 
     def save_database_as_mysql(self, database_name: str, username: str, password: str, db_name: str, host: str):
-        self._save_database_as_hostsb(database_name, username, password, db_name, host)
-        self.config['db_list'][database_name]['type'] = 'mysql_server'
-        self.save()
+        raise DeprecationWarning("Removed in 0.7.0")
 
     def save_database_as_postgress(self, database_name: str, username: str, password: str, db_name: str, host: str):
+        raise DeprecationWarning("Removed in 0.7.0")
+
+    def save_database_as_mongo(self, database_name: str, username: str, password: str, db_name: str, host: str):
         self._save_database_as_hostsb(database_name, username, password, db_name, host)
-        self.config['db_list'][database_name]['type'] = 'postgress_server'
+        self.config.db_list[database_name]['type'] = 'mongodb'
         self.save()
 
     def _save_database_as_hostsb(self, database_name: str, username: str, password: str, db_name: str, host: str):
         if 'db_list' not in self.config:
-            self.config['db_list'] = {}
-        if database_name not in self.config['db_list']:
-            self.config['db_list'][database_name] = {}
-        self.config['db_list'][database_name]['username'] = username
-        self.config['db_list'][database_name]['password'] = password
-        self.config['db_list'][database_name]['db_name'] = db_name
-        self.config['db_list'][database_name]['db_host'] = host
-
+            self.config.db_list = {}
+        if database_name not in self.config.db_list:
+            self.config.db_list[database_name] = {}
+        self.config.db_list[database_name]['username'] = username
+        self.config.db_list[database_name]['password'] = password
+        self.config.db_list[database_name]['db_name'] = db_name
+        self.config.db_list[database_name]['db_host'] = host
 
 
 class DKApiSQLConfig:
@@ -206,7 +207,9 @@ class CLI:
             self.dk_info = dk_info
             super().__init__()
 
-    def __init__(self, config: CLIConfig, database_connection: sqlalchemy.future.Engine):
+    def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
+        # todo: remove self.db_engine as it's only used for Digikey stuff
+        # todo: have Digikey stuff be stored in database's config anyways
         self.db_engine = database_connection
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config

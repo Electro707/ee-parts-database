@@ -1,89 +1,7 @@
 import dataclasses
+from dataclasses import dataclass, field, asdict
 import enum
 import typing
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, Float, String, Text, JSON, ForeignKey
-
-default_string_len = 30
-
-_AlchemyDeclarativeBase = declarative_base()
-
-class Parts(_AlchemyDeclarativeBase):
-    """
-    A table for describing parts
-    All parameters for this part are foreign keys in the `parts_parameters` table.
-    """
-    __tablename__ = 'parts'
-
-    ipn = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False, unique=True)
-    mfr_part_numb = Column(String(default_string_len))
-    stock = Column(Integer, nullable=False)
-    manufacturer = Column(String(default_string_len))
-    storage = Column(String(default_string_len))
-    package = Column(String(default_string_len))
-    comments = Column(Text)
-    datasheet = Column(Text)
-    user = Column(Integer, ForeignKey('users.id'), nullable=True)
-    type = Column(Integer, ForeignKey('part_types.id'))
-    params = relationship("PartsParameters", backref="parts", cascade="all, delete")
-
-
-class ParameterTypes(_AlchemyDeclarativeBase):
-    """
-    This table is for part types (resistors, capacitors, etc)
-
-    This table can be foreign keyed by the `parts` and `pcb_assembly_parts` table
-    """
-    __tablename__ = 'part_types'
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String(default_string_len))
-    part = relationship("Parts")                        # Reference to the part it uses
-    pcb_parts = relationship("PCBAssemblyParts")      # Reference to the part it uses
-
-
-class PartsParameters(_AlchemyDeclarativeBase):
-    """
-    This table has the part's parameters, which each row references a specific part in the `part` table
-    """
-    __tablename__ = 'parts_parameters'
-
-    id = Column(Integer, primary_key=True)
-    ipn = Column(String(default_string_len), ForeignKey('parts.ipn'))
-    key = Column(String(default_string_len), nullable=False)
-    value = Column(String(default_string_len))
-
-class PCBAssembly(_AlchemyDeclarativeBase):
-    __tablename__ = 'pcb_assembly'
-
-    id = Column(Integer, primary_key=True)
-    stock = Column(Integer, nullable=False)
-    comments = Column(String(default_string_len))
-    storage = Column(String(default_string_len))
-    board_name = Column(String(default_string_len), nullable=False)
-    rev = Column(String(default_string_len), nullable=False)
-    parts = Column(Integer, ForeignKey('pcb_assembly_parts.id'))
-
-class PCBAssemblyParts(_AlchemyDeclarativeBase):
-    __tablename__ = 'pcb_assembly_parts'
-
-    id = Column(Integer, primary_key=True)
-    pcb_id = Column(Integer, ForeignKey('pcb_assembly.id'))
-    quantity = Column(Integer, nullable=False)
-    parts_id = Column(String(default_string_len), ForeignKey('parts.ipn'), nullable=True)   # Can be null for a non-specific part
-    type = Column(Integer, ForeignKey('part_types.id'))
-    text_spec = Column(String(default_string_len))
-
-class Users(_AlchemyDeclarativeBase):
-    """
-    Table for storing different users
-    """
-    __tablename__ = 'users'
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String(default_string_len))
-    email = Column(String(default_string_len), nullable=True)
-    parts = relationship("Parts")
 
 
 # Outline the different parts storage specifications
@@ -95,6 +13,9 @@ class ShowAsEnum(enum.Enum):
     precentage = enum.auto()        # Show it as a percentage
     fraction = enum.auto()
 
+class UnicodeCharacters(enum.Enum):
+    Omega = '\u03A9'
+    mu = '\u03BC'
 
 @dataclasses.dataclass
 class SpecLineItem:
@@ -103,148 +24,160 @@ class SpecLineItem:
     shows_as: ShowAsEnum    # How to display it to user
     input_type: type        # What Python type to use
     required: bool          # Is this item required?
+    append_str: str = ""    # What to append to this (units) when displayed
+
+
+@dataclasses.dataclass
+class UserSpec:
+    """
+    A dataclass stating how a user should be stored in the database
+    """
+    name: str
+    email: str = ""
+    phone: str = ""
+
 
 """
-    The spec for any component. NOTE: this MUST match the parts table's keys
+The spec for any component. NOTE: this MUST match the parts table's keys
 """
-eedata_generic_spec = [     # type: typing.List[SpecLineItem]
-    SpecLineItem('stock', 'Stock', ShowAsEnum.normal, int, True),
-    SpecLineItem('ipn', 'IPN', ShowAsEnum.normal, str, True),
-    SpecLineItem('mfr_part_numb', 'Mfr Part #', ShowAsEnum.normal, str, False),
-    SpecLineItem('manufacturer', 'Manufacturer', ShowAsEnum.normal, str, False),
-    SpecLineItem('package', 'Package', ShowAsEnum.normal, str, True),
-    SpecLineItem('storage', 'Storage Location', ShowAsEnum.normal, str, False),
-    SpecLineItem('comments', 'Comments', ShowAsEnum.normal, str, False),
-    SpecLineItem('datasheet', 'Datasheet', ShowAsEnum.normal, str, False),
-    # SpecLineItem('user', 'User', ShowAsEnum.normal, str, False),      # Handled separately
-]
 @dataclasses.dataclass
 class _GenericPartClass:
-    stock: int
-    ipn: str
-    package: str
-    mfr_part_numb: str = None
-    manufacturer: str = None
-    storage: str = None
-    comments: str = None
-    datasheet: str = None
-    user: Users = None
+    stock: int = field(metadata=asdict(SpecLineItem('stock', 'Stock', ShowAsEnum.normal, int, True)))
+    ipn: str = field(metadata=asdict(SpecLineItem('ipn', 'IPN', ShowAsEnum.normal, str, True)))
+    package: str = field(metadata=asdict(SpecLineItem('mfr_part_numb', 'Mfr Part #', ShowAsEnum.normal, str, False)))
+    _: dataclasses.KW_ONLY
+    mfr_part_numb: str = field(default=None, metadata=asdict(SpecLineItem('manufacturer', 'Manufacturer', ShowAsEnum.normal, str, False)))
+    manufacturer: str = field(default=None, metadata=asdict(SpecLineItem('package', 'Package', ShowAsEnum.normal, str, True),))
+    storage: str = field(default=None, metadata=asdict(SpecLineItem('storage', 'Storage Location', ShowAsEnum.normal, str, False),))
+    comments: str = field(default=None, metadata=asdict(SpecLineItem('comments', 'Comments', ShowAsEnum.normal, str, False),))
+    datasheet: str = field(default=None, metadata=asdict(SpecLineItem('datasheet', 'Datasheet', ShowAsEnum.normal, str, False),))
+    user: str = field(default=None, metadata=asdict(SpecLineItem('user', 'User', ShowAsEnum.normal, str, False),))
 
-eedata_generic_items = [i.db_name for i in eedata_generic_spec]
-eedata_generic_items_preitems = ['stock', 'mfr_part_numb', 'manufacturer']
-eedata_generic_items_postitems = ['package', 'storage', 'comments', 'datasheet', 'user']
+
+eedata_generic_items_preitems = ('stock', 'ipn', 'mfr_part_numb', 'manufacturer')
+eedata_generic_items_postitems = ('package', 'storage', 'comments', 'datasheet', 'user')
 
 
 @dataclasses.dataclass
 class Resistor(_GenericPartClass):
-    resistance: float = None        # todo: have this be optional while still sub-classing _GenericPartClass
-    tolerance: float = None
-    power: float = None
+    resistance: float = field(default=None, metadata=asdict(SpecLineItem('resistance', 'Resistance', ShowAsEnum.engineering, float, True, f'{UnicodeCharacters.Omega:s}')))
+    tolerance: float = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)), kw_only=True)
+    power: float = field(default=None, metadata=asdict(SpecLineItem('power', 'Power Rating', ShowAsEnum.fraction, float, False)), kw_only=True)
 
-eedata_resistors_params = [     # type: typing.List[SpecLineItem]
-    SpecLineItem('resistance', 'Resistance', ShowAsEnum.engineering, float, True),
-    SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False),
-    SpecLineItem('power', 'Power Rating', ShowAsEnum.fraction, float, False),
-]
-eedata_resistor_display_order = eedata_generic_items_preitems+[i.db_name for i in eedata_resistors_params]+eedata_generic_items_postitems
 
-eedata_capacitor_params = eedata_generic_spec + [
-    {'db_name': 'capacitance', 'showcase_name': 'Capacitance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
-    {'db_name': 'tolerance', 'showcase_name': 'Tolerance', 'shows_as': 'percentage', 'input_type': 'float', 'required': False, },
-    {'db_name': 'max_voltage', 'showcase_name': 'Voltage Rating', 'shows_as': 'normal', 'input_type': 'float', 'required': False, },
-    {'db_name': 'temp_coeff', 'showcase_name': 'Temperature Coefficient', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'cap_type', 'showcase_name': 'Capacitor Type', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-]
-eedata_capacitor_display_order = eedata_generic_items_preitems+['capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff']+eedata_generic_items_postitems
+eedata_resistor_display_order = eedata_generic_items_preitems+dataclasses.fields(Resistor)+eedata_generic_items_postitems
 
-eedata_ic_params = eedata_generic_spec + [
-    {'db_name': 'ic_type', 'showcase_name': 'IC Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
-]
+
+@dataclasses.dataclass
+class Capacitor(_GenericPartClass):
+    capacitance: float = field(default=None, metadata=asdict(SpecLineItem('capacitance', 'Capacitance', ShowAsEnum.engineering, float, True, f'F')))
+    tolerance: float = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
+    max_voltage: float = field(default=None, metadata=asdict(SpecLineItem('max_voltage', 'Voltage Rating', ShowAsEnum.normal, float, False, 'V')))
+    temp_coeff: float = field(default=None, metadata=asdict(SpecLineItem('temp_coeff', 'Temperature Coefficient', ShowAsEnum.normal, str, False)))
+    cap_type: str = field(default=None, metadata=asdict(SpecLineItem('cap_type', 'Capacitor Type', ShowAsEnum.normal, str, False)))
+
+
+eedata_capacitor_display_order = eedata_generic_items_preitems+('capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff')+eedata_generic_items_postitems
+
+@dataclasses.dataclass
+class IC(_GenericPartClass):
+    ic_type: str = field(default=None, metadata=asdict(SpecLineItem('ic_type', 'IC Type', ShowAsEnum.normal, str, True)))
+
+
 eedata_ic_display_order = eedata_generic_items_preitems+['ic_type']+eedata_generic_items_postitems
 
-eedata_inductor_params = eedata_generic_spec + [
-    {'db_name': 'inductance', 'showcase_name': 'Inductance', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
-    {'db_name': 'tolerance', 'showcase_name': 'Tolerance', 'shows_as': 'percentage', 'input_type': 'float', 'required': False, },
-    {'db_name': 'max_current', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
+
+@dataclasses.dataclass
+class Inductor(_GenericPartClass):
+    inductance: str = field(default=None, metadata=asdict(SpecLineItem('inductance', 'Inductance', ShowAsEnum.engineering, float, True, f'H')))
+    tolerance: str = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
+    max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Max Current', ShowAsEnum.engineering, float, False)))
+
+
 eedata_inductor_display_order = eedata_generic_items_preitems+['inductance', 'tolerance', 'max_current']+eedata_generic_items_postitems
 
-eedata_diode_params = eedata_generic_spec + [
-    {'db_name': 'diode_type', 'showcase_name': 'Diode Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'max_current', 'showcase_name': 'Peak Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'average_current', 'showcase_name': 'Average Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'max_rv', 'showcase_name': 'Max Reverse Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
-eedata_diode_display_order = eedata_generic_items_preitems+['diode_type', 'max_rv', 'average_current', 'max_current']+eedata_generic_items_postitems
 
-eedata_crystal_params = eedata_generic_spec + [
-    {'db_name': 'frequency', 'showcase_name': 'Frequency', 'shows_as': 'engineering', 'input_type': 'float', 'required': True, },
-    {'db_name': 'load_c', 'showcase_name': 'Load Capacitance (pF)', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'esr', 'showcase_name': 'ESR', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'stability_ppm', 'showcase_name': 'Stability (ppm)', 'shows_as': 'normal', 'input_type': 'float', 'required': False, },
-]
-eedata_crystal_display_order = eedata_generic_items_preitems+['frequency', 'load_c', 'esr', 'stability_ppm']+eedata_generic_items_postitems
+@dataclasses.dataclass
+class Inductor(_GenericPartClass):
+    diode_type: str = field(default=None, metadata=asdict(SpecLineItem('diode_type', 'Diode Type', ShowAsEnum.normal, str, True)))
+    max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Peak Current', ShowAsEnum.engineering, float, False)))
+    average_current: str = field(default=None, metadata=asdict(SpecLineItem('average_current', 'Average Current', ShowAsEnum.engineering, float, False)))
+    max_rv: str = field(default=None, metadata=asdict(SpecLineItem('max_rv', 'Max Reverse Voltage', ShowAsEnum.engineering, float, False)))
 
-eedata_mosfet_params = eedata_generic_spec + [
-    {'db_name': 'mosfet_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'vdss', 'showcase_name': 'Max Drain-Source Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'vgss', 'showcase_name': 'Max Gate-Source Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'vgs_th', 'showcase_name': 'Gate-Source Threshold Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'i_d', 'showcase_name': 'Max Drain Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'i_d_pulse', 'showcase_name': 'Max Drain Peak Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
-eedata_mosfet_display_order = eedata_generic_items_preitems+['mosfet_type', 'vdss', 'vgss', 'vgs_th', 'i_d', 'i_d_pulse']+eedata_generic_items_postitems
 
-eedata_bjt_params = eedata_generic_spec + [
-    {'db_name': 'bjt_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'vcbo', 'showcase_name': 'Max Collector-Base Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'vceo', 'showcase_name': 'Max Collector-Emitter Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'vebo', 'showcase_name': 'Max Emitter-Base Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'i_c', 'showcase_name': 'Max Cont. Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'i_c_peak', 'showcase_name': 'Max Peak Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
-eedata_bjt_display_order = eedata_generic_items_preitems+['bjt_type', 'vcbo', 'vceo', 'vebo', 'i_c', 'i_c_peak']+eedata_generic_items_postitems
+eedata_diode_display_order = eedata_generic_items_preitems+('diode_type', 'max_rv', 'average_current', 'max_current')+eedata_generic_items_postitems
 
-eedata_connector_params = eedata_generic_spec + [
-    {'db_name': 'conn_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-]
-eedata_connector_display_order = eedata_generic_items_preitems+['conn_type']+eedata_generic_items_postitems
+@dataclasses.dataclass
+class Inductor(_GenericPartClass):
+    frequency: str = field(default=None, metadata=asdict(SpecLineItem('frequency', 'Frequency', ShowAsEnum.engineering, float, True, 'Hz')))
+    load_c: str = field(default=None, metadata=asdict(SpecLineItem('load_c', 'Load Capacitance', ShowAsEnum.engineering, float, False, 'F')))
+    esr: str = field(default=None, metadata=asdict(SpecLineItem('esr', 'ESR', ShowAsEnum.engineering, float, False, f'{UnicodeCharacters.Omega}')))
+    stability_ppm: str = field(default=None, metadata=asdict(SpecLineItem('stability_ppm', 'Stability', ShowAsEnum.normal, float, False, 'ppm')))
 
-eedata_led_params = eedata_generic_spec + [
-    {'db_name': 'led_type', 'showcase_name': 'LED Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'vf', 'showcase_name': 'LED forward voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
-eedata_led_display_order = eedata_generic_items_preitems+['led_type', 'vf', 'max_i']+eedata_generic_items_postitems
 
-eedata_fuse_params = eedata_generic_spec + [
-    {'db_name': 'fuse_type', 'showcase_name': 'Fuse Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'max_v', 'showcase_name': 'Fuse Max Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'trip_i', 'showcase_name': 'Trip Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'hold_i', 'showcase_name': 'Hold Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
-eedata_fuse_display_order = eedata_generic_items_preitems+['fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i']+eedata_generic_items_postitems
+eedata_crystal_display_order = eedata_generic_items_preitems+('frequency', 'load_c', 'esr', 'stability_ppm')+eedata_generic_items_postitems
 
-eedata_button_params = eedata_generic_spec + [
-    {'db_name': 'bt_type', 'showcase_name': 'Button Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
-    {'db_name': 'circuit_t', 'showcase_name': 'Button Circuit', 'shows_as': 'normal', 'input_type': 'str', 'required': False},
-    {'db_name': 'max_v', 'showcase_name': 'Voltage Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-    {'db_name': 'max_i', 'showcase_name': 'Current Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-]
-eedata_button_display_order = eedata_generic_items_preitems+['bt_type', 'circuit_t', 'max_v', 'max_i']+eedata_generic_items_postitems
-
-eedata_misc_spec = eedata_generic_spec
-eedata_misc_display_order = eedata_generic_items_preitems+eedata_generic_items_postitems
-
-eedata_pcb_params = [
-    {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
-    {'db_name': 'rev', 'showcase_name': 'Revision', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-    {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-    {'db_name': 'board_name', 'showcase_name': 'Board Name', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
-]
-eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'parts', 'storage', 'comments']
+# todo: add
+# eedata_mosfet_params = eedata_generic_spec + [
+#     {'db_name': 'mosfet_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+#     {'db_name': 'vdss', 'showcase_name': 'Max Drain-Source Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'vgss', 'showcase_name': 'Max Gate-Source Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'vgs_th', 'showcase_name': 'Gate-Source Threshold Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'i_d', 'showcase_name': 'Max Drain Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'i_d_pulse', 'showcase_name': 'Max Drain Peak Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+# ]
+# eedata_mosfet_display_order = eedata_generic_items_preitems+['mosfet_type', 'vdss', 'vgss', 'vgs_th', 'i_d', 'i_d_pulse']+eedata_generic_items_postitems
+#
+# eedata_bjt_params = eedata_generic_spec + [
+#     {'db_name': 'bjt_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+#     {'db_name': 'vcbo', 'showcase_name': 'Max Collector-Base Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'vceo', 'showcase_name': 'Max Collector-Emitter Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'vebo', 'showcase_name': 'Max Emitter-Base Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'i_c', 'showcase_name': 'Max Cont. Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'i_c_peak', 'showcase_name': 'Max Peak Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+# ]
+# eedata_bjt_display_order = eedata_generic_items_preitems+['bjt_type', 'vcbo', 'vceo', 'vebo', 'i_c', 'i_c_peak']+eedata_generic_items_postitems
+#
+# eedata_connector_params = eedata_generic_spec + [
+#     {'db_name': 'conn_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+# ]
+# eedata_connector_display_order = eedata_generic_items_preitems+['conn_type']+eedata_generic_items_postitems
+#
+# eedata_led_params = eedata_generic_spec + [
+#     {'db_name': 'led_type', 'showcase_name': 'LED Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+#     {'db_name': 'vf', 'showcase_name': 'LED forward voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+# ]
+# eedata_led_display_order = eedata_generic_items_preitems+['led_type', 'vf', 'max_i']+eedata_generic_items_postitems
+#
+# eedata_fuse_params = eedata_generic_spec + [
+#     {'db_name': 'fuse_type', 'showcase_name': 'Fuse Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+#     {'db_name': 'max_v', 'showcase_name': 'Fuse Max Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'trip_i', 'showcase_name': 'Trip Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'hold_i', 'showcase_name': 'Hold Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+# ]
+# eedata_fuse_display_order = eedata_generic_items_preitems+['fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i']+eedata_generic_items_postitems
+#
+# eedata_button_params = eedata_generic_spec + [
+#     {'db_name': 'bt_type', 'showcase_name': 'Button Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
+#     {'db_name': 'circuit_t', 'showcase_name': 'Button Circuit', 'shows_as': 'normal', 'input_type': 'str', 'required': False},
+#     {'db_name': 'max_v', 'showcase_name': 'Voltage Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+#     {'db_name': 'max_i', 'showcase_name': 'Current Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
+# ]
+# eedata_button_display_order = eedata_generic_items_preitems+['bt_type', 'circuit_t', 'max_v', 'max_i']+eedata_generic_items_postitems
+#
+# eedata_misc_spec = eedata_generic_spec
+# eedata_misc_display_order = eedata_generic_items_preitems+eedata_generic_items_postitems
+#
+# eedata_pcb_params = [
+#     {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
+#     {'db_name': 'rev', 'showcase_name': 'Revision', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
+#     {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
+#     {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
+#     {'db_name': 'board_name', 'showcase_name': 'Board Name', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
+# ]
+# eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'parts', 'storage', 'comments']
 
 
 

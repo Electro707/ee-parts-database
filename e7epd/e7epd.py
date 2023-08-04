@@ -3,13 +3,8 @@ import logging
 import json
 import os
 import time
-import sqlalchemy
-import sqlalchemy.future
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, Float, String, Text, JSON
-from alembic.runtime.migration import MigrationContext
-from alembic.operations import Operations
+import pymongo
+import pymongo.database
 from engineering_notation import EngNumber
 import typing
 
@@ -54,42 +49,21 @@ class E7EPD:
 
         This creates a table (`e7epd_config`) with a key-value style data scheme.
         """
-        _Base = declarative_base()
-
-        class _DataBase(_Base):
-            __tablename__ = 'e7epd_config'
-            id = Column(Integer, primary_key=True)
-            key = Column(String(spec.default_string_len))
-            val = Column(String(spec.default_string_len))
-
-        def __init__(self, session: sqlalchemy.orm.Session, engine: sqlalchemy.future.Engine):
-            self.session = session
+        def __init__(self, db_conn: pymongo.database.Database):
             self.log = logging.getLogger('config')
-
-            self._DataBase.metadata.create_all(engine)
+            self.coll = db_conn['e7epd_config']
 
         def get_info(self, key: str) -> typing.Union[str, None]:
-            d = self.session.query(self._DataBase).filter_by(key=key).all()
-            if len(d) == 0:
+            d = self.coll.find_one({'key': key})
+            if d is None:
                 return None
-            elif len(d) == 1:
-                return d[0].val
             else:
-                raise UserWarning("There isn't supposed to be more than 1 key")
+                return d['val']
 
         def store_info(self, key: str, value: str):
-            d = self.session.query(self._DataBase).filter_by(key=key).all()
-            if len(d) == 0:
-                p = self._DataBase(key=key, val=value)
-                self.session.add(p)
-                self.log.debug('Inserted key-value pair: {}={}'.format(key, value))
-            elif len(d) == 1:
-                d[0].val = value
-                self.log.debug('Updated key {} with value {}'.format(key, value))
-            else:
-                raise UserWarning("There isn't supposed to be more than 1 key")
-
-            self.session.commit()
+            d = self.coll.find_one_and_update({'key': key}, {'$set': {'val': value}})
+            if d is None:
+                self.coll.insert_one({'key': key, 'val': value})
 
         def get_db_version(self) -> typing.Union[str, None]:
             return self.get_info('db_ver')
@@ -354,52 +328,38 @@ class E7EPD:
         #
         #     return ret_str
 
-    def __init__(self, db_conn: sqlalchemy.future.Engine):
+    def __init__(self, db_client: pymongo.MongoClient):
         self.log = logging.getLogger('Database')
-        self.db_conn = db_conn              # Store the connection engine
+        self.db_client = db_client              # Store the connection engine
 
-        self.session = sessionmaker(bind=self.db_conn)()
+        self.db = self.db_client['ee-parts-db']       # The database itself
 
         # The config table in the database
-        self.config = self.ConfigTable(self.session, self.db_conn)
+        self.config = self.ConfigTable(self.db)
 
-        # Create orm table in database
-        spec.Parts.metadata.create_all(self.db_conn)
-        spec.ParameterTypes.metadata.create_all(self.db_conn)
-        spec.PartsParameters.metadata.create_all(self.db_conn)
-        spec.PCBAssembly.metadata.create_all(self.db_conn)
-        spec.PCBAssemblyParts.metadata.create_all(self.db_conn)
-        spec.Users.metadata.create_all(self.db_conn)
+        self.part_coll = self.db['parts']
+        self.users_coll = self.db['user']
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
             self.config.store_current_db_version()
 
-    def add_user(self, u: spec.Users):
+    def add_user(self, u: spec.UserSpec):
         # Do a check to ensure the same name does not exist
-        co = self.session.query(spec.Users).filter_by(name=u.name).count()
+        co = self.users_coll.count_documents({'name': u.name})
         if co != 0:
             raise InputException("The user (by name) already exists in the database")
-        self.session.add(u)
+        self.users_coll.insert_one(dataclasses.asdict(u))
 
-    def get_user_by_name(self, name: str):
-        co = self.session.query(spec.Users).filter_by(name=name).first()
+    def get_user_by_name(self, name: str) -> typing.Union[dict, None]:
+        co = self.users_coll.find_one({'name': name})
         return co
 
     def close(self):
         """
-            Commits to the database and closes the database connection.
-            Call this when exiting your program
+        Call this when exiting your program
         """
-        self.session.commit()
-        self.session.flush()
-        self.session.close()
-
-    def save(self):
-        """
-            Saves any changes done to the database
-        """
-        self.session.commit()
+        pass
 
     def check_if_already_in_db_by_ipn(self, ipn: str) -> (None, int):
         """
@@ -411,7 +371,7 @@ class E7EPD:
         Returns: A tuple, the first index being the SQL ID, the second being the component GenericPart class of the part
         """
         if ipn is not None:
-            d = self.session.query(spec.Parts).filter_by(ipn=ipn).all()
+            d = self.part_coll.count_documents({'ipn': ipn})
             if len(d) == 0:
                 return None
             elif len(d) == 1:
