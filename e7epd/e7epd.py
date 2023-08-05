@@ -41,35 +41,41 @@ class NegativeStock(Exception):
         self.amount_to_make_zero = amount_to_make_zero
         super().__init__('Stock will go to negative')
 
+class E7EPDConfigTable:
+    """
+    A generic configuration table. Currently, this is only used to store a db_ver key
+
+    This creates a table (`e7epd_config`) with a key-value style data scheme.
+    """
+    def __init__(self, db_conn: pymongo.database.Database):
+        self.log = logging.getLogger('config')
+        self.coll = db_conn['e7epd_config']
+
+    def get(self, key: str) -> typing.Union[str, None]:
+        d = self.coll.find_one({'key': key})
+        if d is None:
+            return None
+        else:
+            return d['val']
+
+    def set(self, key: str, value: str):
+        d = self.coll.find_one_and_update({'key': key}, {'$set': {'val': value}})
+        if d is None:
+            self.coll.insert_one({'key': key, 'val': value})
+
+    def save(self):
+        # This does nothing. It's mostly here for compatibility with any set-get-save class callback
+        pass
+
+    def get_db_version(self) -> typing.Union[str, None]:
+        return self.get('db_ver')
+
+    def store_current_db_version(self):
+        self.set('db_ver', database_spec_rev)
 
 class E7EPD:
-    class ConfigTable:
-        """
-        A generic configuration table. Currently, this is only used to store a db_ver key
-
-        This creates a table (`e7epd_config`) with a key-value style data scheme.
-        """
-        def __init__(self, db_conn: pymongo.database.Database):
-            self.log = logging.getLogger('config')
-            self.coll = db_conn['e7epd_config']
-
-        def get_info(self, key: str) -> typing.Union[str, None]:
-            d = self.coll.find_one({'key': key})
-            if d is None:
-                return None
-            else:
-                return d['val']
-
-        def store_info(self, key: str, value: str):
-            d = self.coll.find_one_and_update({'key': key}, {'$set': {'val': value}})
-            if d is None:
-                self.coll.insert_one({'key': key, 'val': value})
-
-        def get_db_version(self) -> typing.Union[str, None]:
-            return self.get_info('db_ver')
-
-        def store_current_db_version(self):
-            self.store_info('db_ver', database_spec_rev)
+    class GenericComponent:  # todo: this is only here to have the cli run due to many typehints. remove at will
+        pass
 
     # class GenericItem(typing.Generic[ComponentTypeVar]):
     #     """ This is a generic part constructor, which other components (like Resistors) will base off of """
@@ -335,10 +341,15 @@ class E7EPD:
         self.db = self.db_client['ee-parts-db']       # The database itself
 
         # The config table in the database
-        self.config = self.ConfigTable(self.db)
+        self.config = E7EPDConfigTable(self.db)
 
         self.part_coll = self.db['parts']
         self.users_coll = self.db['user']
+
+        # Constructor for available part types:
+        self.comp_types = {
+            'Resistor': spec.Resistor,
+        }
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
@@ -380,6 +391,41 @@ class E7EPD:
                 raise UserWarning("There is more than 1 entry for a manufacturer part number")
         else:
             raise InputException("Did not give a manufacturer part number")
+
+    def get_all_parts_type(self, part_class: spec.PartSpec) -> typing.List[dict]:
+        if part_class.db_type_name is None:
+            raise UserWarning("Invalid input part class")
+        d = self.part_coll.find({'type': part_class.db_type_name})
+        return list(d)
+
+    def get_part_by_ipn(self, ipn: str) -> dict:
+        d = self.part_coll.find_one({'ipn': ipn})
+        return d
+
+    def get_number_of_parts_in_db(self, part_class: spec.PartSpec) -> int:
+        if part_class.db_type_name is None:
+            raise UserWarning("Invalid input part class")
+        d = self.part_coll.count_documents({'type': part_class.db_type_name})
+        return d
+
+    def get_all_parts(self, part_class: spec.PartSpec) -> typing.List[dict]:
+        d = self.part_coll.find({'type': part_class.db_type_name})
+        return list(d)
+
+    def get_all_parts_one_keys(self, part_class: spec.PartSpec, ret_key: str) -> list:
+        ret = []
+        d = self.part_coll.find({'type': part_class.db_type_name})
+        for d_i in d:
+            ret.append(d_i[ret_key])
+        return ret
+
+    def add_new_part(self, part_class: spec.PartSpec, new_part: dict):
+        # todo: do a validation on the new_part dict
+        new_part['type'] = part_class.db_type_name
+        self.part_coll.insert_one(new_part)
+
+    def update_stock_from_ipn(self, ipn: str, new_qty: int):
+        self.part_coll.find_one_and_update({'ipn': ipn}, {"$set": {'stock': new_qty}})
 
     def get_all_ipb_in_db(self):
         """
@@ -454,13 +500,14 @@ class E7EPD:
         """
             Backs up the database under a new backup file
         """
-        new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s.json' % time.strftime('%y%m%d%H%M%S')
-        self.log.info("Backing database under %s" % new_db_file)
-        # https://stackoverflow.com/questions/47307873/read-entire-database-with-sqlalchemy-and-dump-as-json
-        meta = sqlalchemy.MetaData()
-        meta.reflect(bind=self.db_conn)  # http://docs.sqlalchemy.org/en/rel_0_9/core/reflection.html
-        result = {}
-        for table in meta.sorted_tables:
-            result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
-        with open(new_db_file, 'x') as f:
-            json.dump(result, f, indent=4)
+        # todo: this
+        # new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s.json' % time.strftime('%y%m%d%H%M%S')
+        # self.log.info("Backing database under %s" % new_db_file)
+        # # https://stackoverflow.com/questions/47307873/read-entire-database-with-sqlalchemy-and-dump-as-json
+        # meta = sqlalchemy.MetaData()
+        # meta.reflect(bind=self.db_conn)  # http://docs.sqlalchemy.org/en/rel_0_9/core/reflection.html
+        # result = {}
+        # for table in meta.sorted_tables:
+        #     result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
+        # with open(new_db_file, 'x') as f:
+        #     json.dump(result, f, indent=4)

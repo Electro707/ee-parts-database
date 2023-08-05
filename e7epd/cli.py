@@ -24,10 +24,13 @@ import sys
 import typing
 import json
 import pymongo
+import pymongo.errors
 import pkg_resources
 import re
+import warnings
 # Local Modules Import
 import e7epd
+from e7epd.e707pd_spec import ShowAsEnum
 # Import of my fork of the digikey_api package
 try:
     from e707_digikey.v3.api import DigikeyAPI
@@ -46,9 +49,7 @@ console = rich.console.Console(style="blue")
 
 def CLIConfig_config_db_list_checker(func):
     def wrap(self, *args, **kwargs):
-        if 'db_list' not in self.config:
-            raise self.NoDatabaseException()
-        if len(self.config['db_list']) == 0:
+        if len(self.config.db_list) == 0:
             raise self.NoDatabaseException()
         return func(self, *args, **kwargs)
     return wrap
@@ -76,7 +77,12 @@ class CLIConfig:
         def __init__(self):
             super().__init__("There isn't a last selected database")
 
+    class DatabaseConnectionException(Exception):
+        def __init__(self):
+            super().__init__("Error connection with database")
+
     def __init__(self):
+        self.log = logging.getLogger('CLIConfig')
         if not pkg_resources.resource_isdir(__name__, 'data'):
             os.mkdir(pkg_resources.resource_filename(__name__, "data"))
         self.file_path = pkg_resources.resource_filename(__name__, "data/cli_config.json")
@@ -91,10 +97,11 @@ class CLIConfig:
 
     @CLIConfig_config_db_list_checker
     def get_database_connection(self, database_name: str = None) -> pymongo.MongoClient:
+        # todo: add JSON file compatibility
         if database_name is None:
-            if 'last_db' not in self.config:
-                raise self.NoLastDBSelectionException()
             database_name = self.config.last_db
+            if database_name is None:
+                raise self.NoLastDBSelectionException()
         if database_name not in self.config.db_list:
             raise self.NoLastDBSelectionException()
 
@@ -108,7 +115,14 @@ class CLIConfig:
         elif self.config.db_list[database_name]['type'] == 'mongodb':
             # todo: enable authentication login
             # todo: enable socket connection
-            return pymongo.MongoClient("mongodb://{}:27017/".format(self.config.db_list[database_name]['db_host']))
+            conn = pymongo.MongoClient("mongodb://{}:27017/".format(self.config.db_list[database_name]['db_host']), serverSelectionTimeoutMS=1000*2)
+            try:
+                # The ping command is cheap and does not require auth.
+                conn.admin.command('ping')
+            except pymongo.errors.ConnectionFailure:
+                self.log.exception("ConnectionFailure going to database")
+                raise self.DatabaseConnectionException()
+            return conn
 
     @CLIConfig_config_db_list_checker
     def get_database_connection_info(self, database_name: str = None) -> dict:
@@ -133,96 +147,32 @@ class CLIConfig:
     def save_database_as_postgress(self, database_name: str, username: str, password: str, db_name: str, host: str):
         raise DeprecationWarning("Removed in 0.7.0")
 
-    def save_database_as_mongo(self, database_name: str, username: str, password: str, db_name: str, host: str):
-        self._save_database_as_hostsb(database_name, username, password, db_name, host)
+    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str):
+        self._save_database_as_hostsb(database_name, username, password, host)
         self.config.db_list[database_name]['type'] = 'mongodb'
         self.save()
 
-    def _save_database_as_hostsb(self, database_name: str, username: str, password: str, db_name: str, host: str):
-        if 'db_list' not in self.config:
-            self.config.db_list = {}
+    def _save_database_as_hostsb(self, database_name: str, username: str, password: str, host: str):
         if database_name not in self.config.db_list:
             self.config.db_list[database_name] = {}
         self.config.db_list[database_name]['username'] = username
         self.config.db_list[database_name]['password'] = password
-        self.config.db_list[database_name]['db_name'] = db_name
         self.config.db_list[database_name]['db_host'] = host
 
 
-class DKApiSQLConfig:
-    _Base = sqlalchemy.orm.declarative_base()
-
-    class _DKConf(_Base):
-        __tablename__ = 'e7epd_pycli_config'
-        id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-        d_key = sqlalchemy.Column(sqlalchemy.String(50))
-        d_val = sqlalchemy.Column(sqlalchemy.String(50))
-
-    def __init__(self, session: sqlalchemy.orm.Session, engine: sqlalchemy.future.Engine):
-        super().__init__()
-        self.log = logging.getLogger('DigikeyAPIConfig')
-        self.session = session
-        self._DKConf.metadata.create_all(engine)
-
-    def set(self, key: str, val: str):
-        d = self.session.query(self._DKConf).filter_by(d_key=key).all()
-        if len(d) == 0:
-            p = self._DKConf(d_key=key, d_val=val)
-            self.session.add(p)
-            self.log.debug('Inserted key-value pair: {}={}'.format(key, val))
-        elif len(d) == 1:
-            d[0].d_val = val
-            self.log.debug('Updated key {} with value {}'.format(key, val))
-        else:
-            raise UserWarning("There isn't supposed to be more than 1 key")
-        self.session.commit()
-
-    def get(self, key: str):
-        d = self.session.query(self._DKConf).filter_by(d_key=key).all()
-        if len(d) == 0:
-            return None
-        elif len(d) == 1:
-            return d[0].d_val
-        else:
-            raise UserWarning("There isn't supposed to be more than 1 key")
-
-    def save(self):
-        self.session.commit()
-
-
-class CLI:
-    cli_revision = e7epd.__version__
-
-    class _HelperFunctionExitError(Exception):
-        def __init__(self, data=None):
-            self.extra_data = data
-            super().__init__()
-
+class DigikeyHandler:
     class _NoDigikeyApiError(Exception):
         pass
 
-    class _ChooseComponentDigikeyBarcode(Exception):
-        def __init__(self, mfg_part_number: str, dk_info: dict):
-            self.mfg_part_number = mfg_part_number
-            self.dk_info = dk_info
-            super().__init__()
-
-    def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
-        # todo: remove self.db_engine as it's only used for Digikey stuff
-        # todo: have Digikey stuff be stored in database's config anyways
-        self.db_engine = database_connection
-        self.db = e7epd.E7EPD(database_connection)
-        self.conf = config
+    def __init__(self, config_handler: e7epd.E7EPDConfigTable):
+        super().__init__()
+        self.log = logging.getLogger('DigikeyAPIConfig')
+        self.config = config_handler
 
         self.is_digikey_available = digikey_api_en
-        self.digikey_api = None
-        self.digikey_api_conf = None
 
         if self.is_digikey_available:
-            self.digikey_api_setup()
-
-        self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
-        self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
+            self.digikey_api = DigikeyAPI(self.config)
 
     def check_for_dk_api(self):
         if not self.is_digikey_available:
@@ -234,21 +184,6 @@ class CLI:
         if self.digikey_api.needs_client_id() or self.digikey_api.needs_client_secret():
             raise self._NoDigikeyApiError
 
-    def digikey_api_setup(self):
-        self.digikey_api_conf = DKApiSQLConfig(sqlalchemy.orm.sessionmaker(self.db_engine)(), self.db_engine)
-        self.digikey_api = DigikeyAPI(self.digikey_api_conf)
-
-    def digikey_api_config_setup(self):
-        c_id = questionary.text("Enter the Digikey API client ID for the API: ").ask()
-        if c_id == '' or c_id is None:
-            console.print("[red]You need a client ID to use the digikey API[/]")
-            return
-        c_sec = questionary.password("Enter the Digikey API client secret for the API: ").ask()
-        if c_sec == '' or c_sec is None:
-            console.print("[red]You need a client ID to use the digikey API[/]")
-            return
-        self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
-
     def scan_digikey_barcode(self, bc_code: str = None):
         """
         Function that asks the user for a Digikey barcode scan, and finds the manufacturer part number as
@@ -257,7 +192,6 @@ class CLI:
         TODO: The digikey info return should be parsed by this function to get useful values
         Args:
             bc_code (str): The scanned digikey barcode. In given, this function will not ask for it
-            get_only_mfg (bool, optional(True)): Whether to only get the mfg part number instead of get some digikey info
 
         Returns:
 
@@ -283,42 +217,76 @@ class CLI:
         bc_code = bc_code.replace('{GS}', u"\u001D")
         try:
             b = self.digikey_api.barcode_2d(bc_code)
-        except:     # TODO: Add specific exception
+        except:  # TODO: Add specific exception
             console.print("[red]Digikey Barcode API error[/]")
             raise KeyboardInterrupt()
         return b.manufacturer_part_number, b
 
+    def digikey_api_config_setup(self):
+        c_id = questionary.text("Enter the Digikey API client ID for the API: ").ask()
+        if c_id == '' or c_id is None:
+            console.print("[red]You need a client ID to use the digikey API[/]")
+            return
+        c_sec = questionary.password("Enter the Digikey API client secret for the API: ").ask()
+        if c_sec == '' or c_sec is None:
+            console.print("[red]You need a client ID to use the digikey API[/]")
+            return
+        self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
+
+
+class CLI:
+    cli_revision = e7epd.__version__
+
+    class _HelperFunctionExitError(Exception):
+        def __init__(self, data=None):
+            self.extra_data = data
+            super().__init__()
+
+    class _ChooseComponentDigikeyBarcode(Exception):
+        def __init__(self, mfg_part_number: str, dk_info: dict):
+            self.mfg_part_number = mfg_part_number
+            self.dk_info = dk_info
+            super().__init__()
+
+    def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
+        # todo: have Digikey stuff be stored in database's config anyways
+        self.db = e7epd.E7EPD(database_connection)
+        self.conf = config
+        self.dk = DigikeyHandler(self.db.config)
+
+        self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
+        self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
+
     @staticmethod
-    def find_spec_by_db_name(spec_list: list, db_name: str) -> dict:
+    def find_spec_by_db_name(spec_list: typing.Dict[str, e7epd.spec.SpecLineItem], db_name: str) -> e7epd.spec.SpecLineItem:
         """
             Helper function that returns a database specification by the db_name attribute
             :param spec_list: The specification list
             :param db_name: The database name
             :return: The specification that has db_name equal to the argument
         """
-        for spec in spec_list:
-            if spec['db_name'] == db_name:
-                return spec
+        warnings.warn("This function is not needed as spec_list is a dict where the key is what's stored in the database", DeprecationWarning)
+        return spec_list[db_name]
 
-    def _ask_manufacturer_part_number(self, existing_mfr_list: list = None, must_already_exist: bool = None) -> str:
+    def _ask_ipn(self, existing_ipn_list: list = None, must_already_exist: bool = None) -> str:
         """
         Asks for the manufacturer part number. This function handles type hinting with a given list, checking if the mfgr
         is a Digikey barcode scan, and raises an error if the entered part number is already in the database or not.
 
         Args:
-            existing_mfr_list: A list of current manufacturer part numbers to typehint
+            existing_ipn_list: A list of current manufacturer part numbers to typehint
             must_already_exist: If a given part number must exist in the `existing_mfr_list` or must not exist
 
         Returns: The entered manufacturer part number
         """
         # Replace default argument
-        if existing_mfr_list is None:
-            existing_mfr_list = []
+        if existing_ipn_list is None:
+            existing_ipn_list = []
         # If the exist
         # if len(existing_mfr_list) == 0 and must_already_exist is True:
         #     raise UserWarning("Internal Error: existing_mfr_list is None but must_already_exist is True")
-        if len(existing_mfr_list) != 0:
-            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=existing_mfr_list).ask()
+        if len(existing_ipn_list) != 0:
+            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=existing_ipn_list).ask()
         else:
             mfr_part_numb = questionary.text("Enter the manufacturer part number (or scan a Digikey barcode): ").ask()
         if mfr_part_numb == '' or mfr_part_numb is None:
@@ -328,15 +296,15 @@ class CLI:
         mfr_part_numb = mfr_part_numb.upper()
         if mfr_part_numb.startswith('[)>'):
             try:
-                mfr_part_numb, p = self.scan_digikey_barcode(mfr_part_numb)
+                mfr_part_numb, p = self.dk.scan_digikey_barcode(mfr_part_numb)
             except KeyboardInterrupt:
                 raise self._HelperFunctionExitError()
         if must_already_exist is True:
-            if mfr_part_numb not in existing_mfr_list:
+            if mfr_part_numb not in existing_ipn_list:
                 console.print("[red]Part must already exist in the database[/]")
                 raise self._HelperFunctionExitError(mfr_part_numb)
         elif must_already_exist is False:
-            if mfr_part_numb in existing_mfr_list:
+            if mfr_part_numb in existing_ipn_list:
                 console.print("[red]Part must not already exist in the database, which it does![/]")
                 raise self._HelperFunctionExitError(mfr_part_numb)
         return mfr_part_numb
@@ -356,7 +324,7 @@ class CLI:
                 console.print("Done adding parts")
                 break
             elif specific_part == "Specific":
-                mgf = self._ask_manufacturer_part_number(self.db.get_all_mfr_part_numb_in_db(), True)
+                mgf = self._ask_ipn(self.db.get_all_mfr_part_numb_in_db(), True)
                 _, part_db = self.db.check_if_already_in_db_by_manuf(mgf)
                 new_part['part']['mfr_part_numb'] = mgf
                 new_part['comp_type'] = part_db.table_name
@@ -398,20 +366,20 @@ class CLI:
             raise self._HelperFunctionExitError()
         return all_parts_dict
 
-    def print_parts_list(self, part_db: e7epd.E7EPD.GenericComponent, parts_list: list[e7epd.spec.GenericItem], title):
+    def print_parts_list(self, part_type: e7epd.spec.PartSpec, parts_list: list[dict], title):
         """ Function is called when the user wants to print out all parts """
         ta = rich.table.Table(title=title)
-        for spec_db_name in part_db.table_item_display_order:
-            ta.add_column(self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)['showcase_name'])
+        for spec_db_name in part_type.table_display_order:
+            ta.add_column(part_type.items[spec_db_name].showcase_name)
         for part in parts_list:
             row = []
-            for spec_db_name in part_db.table_item_display_order:
+            for spec_db_name in part_type.table_display_order:
                 to_display = getattr(part, spec_db_name)
-                display_as = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)['shows_as']
+                display_as = part_type.items[spec_db_name].shows_as
                 if to_display is not None:
-                    if display_as == 'engineering':
+                    if display_as == ShowAsEnum.engineering:
                         to_display = str(EngNumber(to_display))
-                    elif display_as == 'percentage':
+                    elif display_as == ShowAsEnum.precentage:
                         to_display = str(to_display) + "%"
                     else:
                         to_display = str(to_display)
@@ -419,28 +387,28 @@ class CLI:
             ta.add_row(*row)
         console.print(ta)
 
-    def print_all_parts(self, part_db: e7epd.E7EPD.GenericComponent):
-        parts_list = part_db.get_all_parts()
-        self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
+    def print_all_parts(self, part_type: e7epd.spec.PartSpec):
+        parts_list = self.db.get_all_parts_type(part_type)
+        self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
-    def print_filtered_parts(self, part_db: e7epd.E7EPD.GenericComponent):
+    def print_filtered_parts(self, part_type: e7epd.spec.PartSpec):
         """
         Prints all parts in a component database with filtering
         Args:
             part_db: The component database to use
         """
-        choices = [questionary.Choice(title=d['showcase_name'], value=d) for d in part_db.table_item_spec]
-        specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()
+        choices = [questionary.Choice(title=part_type.items[d].showcase_name, value=d) for d in part_type.items]
+        specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()       # type: typing.List[str]
         if specs_selected is None:
             return
         if len(specs_selected) == 0:
             console.print("[red]Must choose something[/]")
             return
         search_filter = []
-        for spec in specs_selected:
-            autocomplete_choices = self.get_autocomplete_list(spec['db_name'], part_db.table_name)
+        for s in specs_selected:
+            autocomplete_choices = self.get_autocomplete_list(s, part_type.db_type_name)
             try:
-                inp, op = self.ask_for_spec_input_with_operator(part_db, spec, autocomplete_choices)
+                inp, op = self.ask_for_spec_input_with_operator(s, part_type.items[s], autocomplete_choices)
             except KeyboardInterrupt:
                 console.print("Canceled part lookup")
                 return
@@ -452,19 +420,19 @@ class CLI:
             return
         self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
 
-    def print_parts(self, part_db: e7epd.E7EPD.GenericComponent = None):
-        if part_db is None:
-            part_db = self.choose_component()
-        if part_db.is_database_empty():
+    def print_parts(self, part_type: e7epd.spec.PartSpec = None):
+        if part_type is None:
+            part_type = self.choose_component()
+        if self.db.get_number_of_parts_in_db(part_type):
             console.print("[italic red]Sorry, but there are no parts for that component[/]")
             return
         all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=True).ask()
         if all_parts:
-            self.print_filtered_parts(part_db)
+            self.print_filtered_parts(part_type)
         else:
-            self.print_all_parts(part_db)
+            self.print_all_parts(part_type)
 
-    def ask_for_spec_input_with_operator(self, part_db: e7epd.E7EPD.GenericComponent, spec: dict, choices: list = None, operator_allowed: bool = True):
+    def ask_for_spec_input_with_operator(self, part_type: e7epd.spec.PartSpec, spec_name: str, choices: list = None, operator_allowed: bool = True):
         """
         Function that prompts the user to enter the specification (resistance, package, etc) for a part.
         This function allows nicely type inputs like 10k
@@ -480,24 +448,26 @@ class CLI:
                     - The input given as the spec type (so for resistance it will return as a float)
                     - The operator to compare with the input if allowed, like == or >
         """
-        if spec['input_type'] == 'parts_json':  # We are handling adding a part, which is seperate from a value
-            try:
-                inp = self._ask_for_pcb_parts()
-            except self._HelperFunctionExitError:
-                raise KeyboardInterrupt()
-            return inp
+        # todo: this
+        # if spec['input_type'] == 'parts_json':  # We are handling adding a part, which is seperate from a value
+        #     try:
+        #         inp = self._ask_for_pcb_parts()
+        #     except self._HelperFunctionExitError:
+        #         raise KeyboardInterrupt()
+        #     return inp
         op = '=='
+        spec = part_type.items[spec_name]
         while 1:
-            if spec['db_name'] == 'mfr_part_numb':
+            if spec_name == 'mfr_part_numb':
                 try:
-                    inp = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db())
+                    inp = self._ask_ipn([i['mfr_part_numb'] for i in self.db.get_all_parts(part_type)])
                 except self._HelperFunctionExitError:
                     raise KeyboardInterrupt()
             else:
                 if choices:
-                    inp = questionary.autocomplete("Enter value for %s: " % spec['showcase_name'], choices=choices).ask()
+                    inp = questionary.autocomplete("Enter value for %s: " % spec.showcase_name, choices=choices).ask()
                 else:
-                    inp = questionary.text("Enter value for %s: " % spec['showcase_name']).ask()
+                    inp = questionary.text("Enter value for %s: " % spec.showcase_name).ask()
             if inp is None:
                 raise KeyboardInterrupt()
             if inp == '':
@@ -514,19 +484,19 @@ class CLI:
                     if inp.startswith(tuple(['<', '<=', '>', '>='])):
                         op = re.findall(r'\>=|\>|\<=|\<', inp)[0]
                         inp = re.sub(r'\>=|\>|\<=|\<', "", inp)
-                if spec['shows_as'] == 'engineering':
+                if spec.shows_as == ShowAsEnum.engineering:
                     try:
                         inp = EngNumber(inp)
                     except decimal.InvalidOperation:
                         console.print("Invalid engineering number")
                         continue
-                elif spec['shows_as'] == 'percentage':
+                elif spec.shows_as == ShowAsEnum.precentage:
                     if '%' in inp:
                         inp = inp.replace('%', '')
                     else:
                         console.print("Inputted value is not a percentage")
                         continue
-                elif '/' in inp and spec['input_type'] == 'float':
+                elif '/' in inp and spec.input_type is float:
                     inp = inp.split('/')
                     try:
                         inp = float(inp[0]) / float(inp[1])
@@ -535,22 +505,23 @@ class CLI:
                         continue
 
                 try:
-                    if spec['input_type'] == 'int':
+                    if spec.input_type is int:
                         inp = int(inp)
-                    elif spec['input_type'] == 'float':
+                    elif spec.input_type is float:
                         inp = float(inp)
                 except ValueError:
-                    console.print("Inputted value is not a %s" % spec['input_type'])
+                    console.print("Inputted value is not a %s" % spec.input_type)
                     continue
             break
         return inp, op
 
-    def ask_for_spec_input(self, part_db: e7epd.E7EPD.GenericComponent, spec: dict, choices: list = None):
-        inp, op = self.ask_for_spec_input_with_operator(part_db, spec, choices, operator_allowed=False)
+    def ask_for_spec_input(self, part_type: e7epd.spec.PartSpec, spec_name: str, choices: list = None):
+        inp, op = self.ask_for_spec_input_with_operator(part_type, spec_name, choices, operator_allowed=False)
         return inp
 
     @staticmethod
     def get_autocomplete_list(db_name: str, table_name: str) -> typing.Union[None, list]:
+        # todo: improve this for table name to point to type directly
         autocomplete_choices = None
         if db_name == 'manufacturer' and table_name == 'ic':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_manufacturers']
@@ -577,7 +548,7 @@ class CLI:
             autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_packages']
         return autocomplete_choices
 
-    def get_partdb_and_mfg(self, part_db: e7epd.E7EPD.GenericComponent = None, mfg_must_exist: bool = None):
+    def get_partdb_and_ipn(self, part_db: e7epd.E7EPD.GenericComponent = None, mfg_must_exist: bool = None):
         """
         Helper function to get the manufacturer part number and component database
         Args:
@@ -594,7 +565,7 @@ class CLI:
             all_mfr_list = part_db.get_all_mfr_part_numb_in_db()
 
         try:
-            mfr_part_numb = self._ask_manufacturer_part_number(all_mfr_list, must_already_exist=mfg_must_exist)
+            mfr_part_numb = self._ask_ipn(all_mfr_list, must_already_exist=mfg_must_exist)
         except self._HelperFunctionExitError:
             raise self._HelperFunctionExitError()
         if part_db is None:
@@ -604,46 +575,39 @@ class CLI:
                     break
         return part_db, mfr_part_numb
 
-    def add_new_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
+    def add_new_part(self, part_type: e7epd.spec.PartSpec = None):
         """ Function gets called when a part is to be added """
         try:
-            if part_db is None:
+            if part_type is None:
                 try:
-                    part_db = self.choose_component()
+                    part_type = self.choose_component()
                 except self._ChooseComponentDigikeyBarcode as e:
                     print(e.dk_info)
                     console.print("[red]Digikey component for adding a part isn't supported, yet[/]")
                     return
-            if 'mfr_part_numb' in part_db.table_item_display_order:
-                try:
-                    mfr_part_numb = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=False)
-                except self._HelperFunctionExitError as e:
-                    if e.extra_data is not None:
-                        if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=False).ask():
-                            self.add_stock_to_part(part_db, e.extra_data)
-                    return
-                new_part = part_db.part_type(mfr_part_numb=mfr_part_numb)
-            else:
-                new_part = part_db.part_type()
-            for spec_db_name in part_db.table_item_display_order:
-                # Skip over the manufacturer part number as we already have that
-                if spec_db_name == 'mfr_part_numb':
+            try:
+                ipn = self._ask_ipn(self.db.get_all_parts_one_keys(part_type, 'ipn'), must_already_exist=False)
+            except self._HelperFunctionExitError as e:
+                if e.extra_data is not None:
+                    if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=False).ask():
+                        self.add_stock_to_part(part_type, e.extra_data)
+                return
+            new_part = {'ipn': ipn}
+            for spec_db_name in part_type.items:
+                # Skip over the ipn as we already have that
+                if spec_db_name == 'ipn':
                     continue
                 # Select an autocomplete choice, or None if there isn't any
-                autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_db.table_name)
+                autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_type.db_type_name)
                 # Get the spec
-                spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
-                if spec is None:
-                    console.print("[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
-                    return
+                spec = part_type.items[spec_db_name]
                 # Ask the user for that property
                 try:
-                    setattr(new_part, spec_db_name, self.ask_for_spec_input(part_db, spec, autocomplete_choices))
+                    new_part[spec_db_name] = self.ask_for_spec_input(part_type, spec_db_name, autocomplete_choices)
                 except KeyboardInterrupt:
                     console.print("Did not add part")
                     return
-            part_db.create_part(new_part)
-            self.db.save()
+            self.db.add_new_part(part_type, new_part)
         except KeyboardInterrupt:
             console.print("\nOk, no part is added")
             return
@@ -651,7 +615,7 @@ class CLI:
     def delete_part(self, part_db: e7epd.E7EPD.GenericComponent):
         """ This gets called when a part is to be deleted """
         try:
-            part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
+            part_db, mfr_part_numb = self.get_partdb_and_ipn(part_db, True)
         except self._HelperFunctionExitError:
             return
         if questionary.confirm("ARE YOU SURE...AGAIN???", auto_enter=False, default=False).ask():
@@ -664,15 +628,15 @@ class CLI:
         else:
             console.print("Did not delete the part, it is safe.")
 
-    def add_stock_to_part(self, part_db: e7epd.E7EPD.GenericComponent = None, mfr_part_numb: str = None):
+    def add_stock_to_part(self, part_db: e7epd.spec.PartSpec = None, ipn: str = None):
         try:
-            if mfr_part_numb is None or part_db is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
+            if ipn is None or part_db is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
                 try:
-                    part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
+                    part_db, ipn = self.get_partdb_and_ipn(part_db, True)
                 except self._HelperFunctionExitError:
                     return
-            component = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
-            console.print('There are {:d} parts of the selected component'.format(component.stock))
+            component = self.db.get_part_by_ipn(ipn)
+            console.print('There are {:d} parts of the selected component'.format(component['stock']))
             while 1:
                 add_by = questionary.text("Enter how much you want to add this part by: ").ask()
                 if add_by is None:
@@ -686,9 +650,9 @@ class CLI:
                     console.print("Must be greater than 0")
                     continue
                 break
-            component.stock += add_by
-            part_db.commit()
-            console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(component.stock))
+            component['stock'] += add_by
+            self.db.update_stock_from_ipn(ipn, component['stock'])
+            console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(component['stock']))
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
@@ -696,7 +660,7 @@ class CLI:
     def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
         try:
             try:
-                part_db, mfr_part_numb = self.get_partdb_and_mfg(part_db, True)
+                part_db, mfr_part_numb = self.get_partdb_and_ipn(part_db, True)
             except self._HelperFunctionExitError:
                 return
             component = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
@@ -734,7 +698,7 @@ class CLI:
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
-                mfr_part_numb = self._ask_manufacturer_part_number(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=True)
+                mfr_part_numb = self._ask_ipn(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=True)
             except self._HelperFunctionExitError:
                 return
             part = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
@@ -850,7 +814,7 @@ class CLI:
             elif to_do == "Edit Part":
                 self.edit_part(part_db)
 
-    def choose_component(self) -> e7epd.E7EPD.GenericComponent:
+    def choose_component(self) -> e7epd.spec.PartSpec:
         """
         Dialog to choose which component to use.
         Returns: The component class
@@ -858,13 +822,16 @@ class CLI:
         Raises KeyboardInterrupt: If a component is not chosen
         """
         pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
-        component = questionary.select("Select the component you want do things with:", choices=list(self.db.components.keys()) + [pcb_choice, self.return_formatted_choice]).ask()
+        component = questionary.select("Select the component you want do things with:", choices=list(self.db.comp_types.keys()) + [pcb_choice, self.return_formatted_choice]).ask()
         if component is None or component == 'Return':
             raise KeyboardInterrupt()
         elif component == 'PCBs':
-            part_db = self.db.pcbs
+            # part_db = self.db.pcbs
+            # todo: this
+            raise KeyboardInterrupt()
+            pass
         else:
-            part_db = self.db.components[component]
+            part_db = self.db.comp_types[component]
         return part_db
 
     def wipe_database(self):
@@ -952,7 +919,9 @@ class CLI:
                 elif to_do == 'Exit':
                     break
                 elif to_do == 'Check components for PCB':
-                    self.print_pcb_and_component_availability()
+                    # todo: this
+                    # self.print_pcb_and_component_availability()
+                    continue
                 elif to_do == 'Search Part':
                     self.print_parts()
                 elif to_do == 'Add new part':
@@ -998,21 +967,15 @@ class CLI:
 def ask_for_database(config: CLIConfig):
     console.print("Oh no, no database is configured. Let's get that settled")
     db_id_name = questionary.text("What do you want to call this database").unsafe_ask()
-    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mySQL', 'PostgreSQL', 'SQlite']).unsafe_ask()
-    if is_server == 'mySQL' or is_server == 'PostgreSQL':
+    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mongoDb']).unsafe_ask()
+    if is_server == 'mongoDb':
         host = questionary.text("What is the database host?").unsafe_ask()
-        db_name = questionary.text("What is the database name").unsafe_ask()
-        username = questionary.text("What is the database username?").unsafe_ask()
-        password = questionary.password("What is the database password?").unsafe_ask()
-        if is_server == 'mySQL':
-            config.save_database_as_mysql(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
-        elif is_server == 'PostgreSQL':
-            config.save_database_as_postgress(database_name=db_id_name, username=username, db_name=db_name, password=password, host=host)
-    elif is_server == 'SQlite':
-        file_name = questionary.text("Please enter the name of the server database file you want to be created").unsafe_ask()
-        if '.db' not in file_name:
-            file_name += '.db'
-        config.save_database_as_sqlite(db_id_name, file_name)
+        # username = questionary.text("What is the database username?").unsafe_ask()
+        # password = questionary.password("What is the database password?").unsafe_ask()
+        # todo: add back
+        username = ""
+        password = ""
+        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host)
 
 
 def main():
@@ -1033,6 +996,9 @@ def main():
             if db_name is None:
                 console.print("No database is selected to communicate to. Please restart and select something")
                 sys.exit(-1)
+        except c.DatabaseConnectionException:
+            console.print("Unable to connect to database")
+            sys.exit(-1)
 
     c = CLI(config=c, database_connection=db_conn)
     c.main()

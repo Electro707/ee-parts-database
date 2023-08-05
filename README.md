@@ -1,5 +1,5 @@
 # E707 Electronics Parts Database (E7EPD)
-## Database Rev 0.5, Backend and CLI Rev 0.5.1
+## Database Rev 0.7.0-dev, Backend and CLI Rev 0.7.0-dev
 ## Still a Work-In-Progress
 
 This project attempts to create yet another open-source electronics parts management system. While there are some out
@@ -28,9 +28,7 @@ pip install .
 ```
   
 ## Security:
-As of Rev 0.3, this project uses sqlAlchemy, without directly creating SQL commands like before. This should make it more
-secure than previous revisions in terms of arbitrary SQL code issues.
-#### NOTICE: The password for a mySQL user is stored in a json file in plain format. Make sure the mySQL account only has permission to the parts' database.
+#### NOTICE: The password for the database server is stored in a json file in plain format. Make sure the db account only has permission to the parts' database.
 
 ## CLI Application
 To start using this application/database, simply launch `e7epd` from the command line. Prompts should show up, allowing you to interact with the 
@@ -50,8 +48,7 @@ For more details as to how parts are stored in the database, see [database speci
 
 The python file `e7epd.py` includes a `E7EPD` class, which is a wrapper for the database.
 To add the database wrapper `e7epd.py` to your project, you will need Python>3.7 with their pre-installed packages as well as the following extra packages:
-- [SQLAlchemy](https://pypi.org/project/SQLAlchemy/)
-- [alembic](https://pypi.org/project/alembic/)
+- [pymongo](https://pypi.org/project/pymongo/)
   
 The following packages are required to run it:
 - [rich](https://pypi.org/project/rich/)

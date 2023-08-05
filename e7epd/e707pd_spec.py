@@ -19,12 +19,13 @@ class UnicodeCharacters(enum.Enum):
 
 @dataclasses.dataclass
 class SpecLineItem:
-    db_name: str            # how this gets stored in the database
     showcase_name: str      # How to showcase this line item to the user
     shows_as: ShowAsEnum    # How to display it to user
     input_type: type        # What Python type to use
     required: bool          # Is this item required?
     append_str: str = ""    # What to append to this (units) when displayed
+    # The key for a part spec will be the db_name, thus it is not needed
+    # db_name: str            # how this gets stored in the database
 
 
 @dataclasses.dataclass
@@ -37,85 +38,98 @@ class UserSpec:
     phone: str = ""
 
 
+@dataclasses.dataclass
+class PartSpec:
+    """
+    How each part specification should be organized as
+    """
+    db_type_name: str
+    showcase_name: str
+    table_display_order: tuple
+    items: typing.Dict[str, SpecLineItem]
+
+
 """
 The spec for any component. NOTE: this MUST match the parts table's keys
 """
-@dataclasses.dataclass
-class _GenericPartClass:
-    stock: int = field(metadata=asdict(SpecLineItem('stock', 'Stock', ShowAsEnum.normal, int, True)))
-    ipn: str = field(metadata=asdict(SpecLineItem('ipn', 'IPN', ShowAsEnum.normal, str, True)))
-    package: str = field(metadata=asdict(SpecLineItem('mfr_part_numb', 'Mfr Part #', ShowAsEnum.normal, str, False)))
-    _: dataclasses.KW_ONLY
-    mfr_part_numb: str = field(default=None, metadata=asdict(SpecLineItem('manufacturer', 'Manufacturer', ShowAsEnum.normal, str, False)))
-    manufacturer: str = field(default=None, metadata=asdict(SpecLineItem('package', 'Package', ShowAsEnum.normal, str, True),))
-    storage: str = field(default=None, metadata=asdict(SpecLineItem('storage', 'Storage Location', ShowAsEnum.normal, str, False),))
-    comments: str = field(default=None, metadata=asdict(SpecLineItem('comments', 'Comments', ShowAsEnum.normal, str, False),))
-    datasheet: str = field(default=None, metadata=asdict(SpecLineItem('datasheet', 'Datasheet', ShowAsEnum.normal, str, False),))
-    user: str = field(default=None, metadata=asdict(SpecLineItem('user', 'User', ShowAsEnum.normal, str, False),))
+_BasePartItems = {
+    'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
+    'ipn': SpecLineItem('IPN', ShowAsEnum.normal, str, True),
+    'package': SpecLineItem('Mfr Part #', ShowAsEnum.normal, str, False),
+    'mfr_part_numb': SpecLineItem('Manufacturer', ShowAsEnum.normal, str, False),
+    'manufacturer': SpecLineItem('Package', ShowAsEnum.normal, str, True),
+    'storage': SpecLineItem('Storage Location', ShowAsEnum.normal, str, False),
+    'comments': SpecLineItem('Comments', ShowAsEnum.normal, str, False),
+    'datasheet': SpecLineItem('Datasheet', ShowAsEnum.normal, str, False),
+    'user': SpecLineItem('User', ShowAsEnum.normal, str, False),
+}
 
 
 eedata_generic_items_preitems = ('stock', 'ipn', 'mfr_part_numb', 'manufacturer')
 eedata_generic_items_postitems = ('package', 'storage', 'comments', 'datasheet', 'user')
 
 
-@dataclasses.dataclass
-class Resistor(_GenericPartClass):
-    resistance: float = field(default=None, metadata=asdict(SpecLineItem('resistance', 'Resistance', ShowAsEnum.engineering, float, True, f'{UnicodeCharacters.Omega:s}')))
-    tolerance: float = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)), kw_only=True)
-    power: float = field(default=None, metadata=asdict(SpecLineItem('power', 'Power Rating', ShowAsEnum.fraction, float, False)), kw_only=True)
+Resistor = PartSpec(
+    db_type_name='resistor',
+    showcase_name='Resistor',
+    table_display_order=eedata_generic_items_preitems+('resistance', 'tolerance', 'power')+eedata_generic_items_postitems,
+    items={
+        **_BasePartItems,
+        'resistance': SpecLineItem('Resistance', ShowAsEnum.engineering, float, True, f'{UnicodeCharacters.Omega:s}'),
+        'tolerance': SpecLineItem('Tolerance', ShowAsEnum.precentage, float, False),
+        'power': SpecLineItem('Power Rating', ShowAsEnum.fraction, float, False),
+    }
+)
 
-
-eedata_resistor_display_order = eedata_generic_items_preitems+dataclasses.fields(Resistor)+eedata_generic_items_postitems
-
-
-@dataclasses.dataclass
-class Capacitor(_GenericPartClass):
-    capacitance: float = field(default=None, metadata=asdict(SpecLineItem('capacitance', 'Capacitance', ShowAsEnum.engineering, float, True, f'F')))
-    tolerance: float = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
-    max_voltage: float = field(default=None, metadata=asdict(SpecLineItem('max_voltage', 'Voltage Rating', ShowAsEnum.normal, float, False, 'V')))
-    temp_coeff: float = field(default=None, metadata=asdict(SpecLineItem('temp_coeff', 'Temperature Coefficient', ShowAsEnum.normal, str, False)))
-    cap_type: str = field(default=None, metadata=asdict(SpecLineItem('cap_type', 'Capacitor Type', ShowAsEnum.normal, str, False)))
-
-
-eedata_capacitor_display_order = eedata_generic_items_preitems+('capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff')+eedata_generic_items_postitems
-
-@dataclasses.dataclass
-class IC(_GenericPartClass):
-    ic_type: str = field(default=None, metadata=asdict(SpecLineItem('ic_type', 'IC Type', ShowAsEnum.normal, str, True)))
-
-
-eedata_ic_display_order = eedata_generic_items_preitems+['ic_type']+eedata_generic_items_postitems
-
-
-@dataclasses.dataclass
-class Inductor(_GenericPartClass):
-    inductance: str = field(default=None, metadata=asdict(SpecLineItem('inductance', 'Inductance', ShowAsEnum.engineering, float, True, f'H')))
-    tolerance: str = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
-    max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Max Current', ShowAsEnum.engineering, float, False)))
-
-
-eedata_inductor_display_order = eedata_generic_items_preitems+['inductance', 'tolerance', 'max_current']+eedata_generic_items_postitems
-
-
-@dataclasses.dataclass
-class Inductor(_GenericPartClass):
-    diode_type: str = field(default=None, metadata=asdict(SpecLineItem('diode_type', 'Diode Type', ShowAsEnum.normal, str, True)))
-    max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Peak Current', ShowAsEnum.engineering, float, False)))
-    average_current: str = field(default=None, metadata=asdict(SpecLineItem('average_current', 'Average Current', ShowAsEnum.engineering, float, False)))
-    max_rv: str = field(default=None, metadata=asdict(SpecLineItem('max_rv', 'Max Reverse Voltage', ShowAsEnum.engineering, float, False)))
-
-
-eedata_diode_display_order = eedata_generic_items_preitems+('diode_type', 'max_rv', 'average_current', 'max_current')+eedata_generic_items_postitems
-
-@dataclasses.dataclass
-class Inductor(_GenericPartClass):
-    frequency: str = field(default=None, metadata=asdict(SpecLineItem('frequency', 'Frequency', ShowAsEnum.engineering, float, True, 'Hz')))
-    load_c: str = field(default=None, metadata=asdict(SpecLineItem('load_c', 'Load Capacitance', ShowAsEnum.engineering, float, False, 'F')))
-    esr: str = field(default=None, metadata=asdict(SpecLineItem('esr', 'ESR', ShowAsEnum.engineering, float, False, f'{UnicodeCharacters.Omega}')))
-    stability_ppm: str = field(default=None, metadata=asdict(SpecLineItem('stability_ppm', 'Stability', ShowAsEnum.normal, float, False, 'ppm')))
-
-
-eedata_crystal_display_order = eedata_generic_items_preitems+('frequency', 'load_c', 'esr', 'stability_ppm')+eedata_generic_items_postitems
+# todo
+# @dataclasses.dataclass
+# class Capacitor(GenericPartClass):
+#     capacitance: float = field(default=None, metadata=asdict(SpecLineItem('capacitance', 'Capacitance', ShowAsEnum.engineering, float, True, f'F')))
+#     tolerance: float = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
+#     max_voltage: float = field(default=None, metadata=asdict(SpecLineItem('max_voltage', 'Voltage Rating', ShowAsEnum.normal, float, False, 'V')))
+#     temp_coeff: float = field(default=None, metadata=asdict(SpecLineItem('temp_coeff', 'Temperature Coefficient', ShowAsEnum.normal, str, False)))
+#     cap_type: str = field(default=None, metadata=asdict(SpecLineItem('cap_type', 'Capacitor Type', ShowAsEnum.normal, str, False)))
+#
+#     db_name = 'capacitor'
+#     table_item_display_order = eedata_generic_items_preitems+('capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff')+eedata_generic_items_postitems
+#
+# @dataclasses.dataclass
+# class IC(GenericPartClass):
+#     ic_type: str = field(default=None, metadata=asdict(SpecLineItem('ic_type', 'IC Type', ShowAsEnum.normal, str, True)))
+#
+#     db_name = 'ic'
+#     table_item_display_order = eedata_generic_items_preitems+['ic_type']+eedata_generic_items_postitems
+#
+#
+# @dataclasses.dataclass
+# class Inductor(GenericPartClass):
+#     inductance: str = field(default=None, metadata=asdict(SpecLineItem('inductance', 'Inductance', ShowAsEnum.engineering, float, True, f'H')))
+#     tolerance: str = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
+#     max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Max Current', ShowAsEnum.engineering, float, False)))
+#
+#     db_name = 'inductor'
+#     table_item_display_order = eedata_generic_items_preitems+['inductance', 'tolerance', 'max_current']+eedata_generic_items_postitems
+#
+#
+# @dataclasses.dataclass
+# class Diode(GenericPartClass):
+#     diode_type: str = field(default=None, metadata=asdict(SpecLineItem('diode_type', 'Diode Type', ShowAsEnum.normal, str, True)))
+#     max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Peak Current', ShowAsEnum.engineering, float, False)))
+#     average_current: str = field(default=None, metadata=asdict(SpecLineItem('average_current', 'Average Current', ShowAsEnum.engineering, float, False)))
+#     max_rv: str = field(default=None, metadata=asdict(SpecLineItem('max_rv', 'Max Reverse Voltage', ShowAsEnum.engineering, float, False)))
+#
+#     db_name = 'diode'
+#     table_item_display_order = eedata_generic_items_preitems+('diode_type', 'max_rv', 'average_current', 'max_current')+eedata_generic_items_postitems
+#
+# @dataclasses.dataclass
+# class Crystal(GenericPartClass):
+#     frequency: str = field(default=None, metadata=asdict(SpecLineItem('frequency', 'Frequency', ShowAsEnum.engineering, float, True, 'Hz')))
+#     load_c: str = field(default=None, metadata=asdict(SpecLineItem('load_c', 'Load Capacitance', ShowAsEnum.engineering, float, False, 'F')))
+#     esr: str = field(default=None, metadata=asdict(SpecLineItem('esr', 'ESR', ShowAsEnum.engineering, float, False, f'{UnicodeCharacters.Omega}')))
+#     stability_ppm: str = field(default=None, metadata=asdict(SpecLineItem('stability_ppm', 'Stability', ShowAsEnum.normal, float, False, 'ppm')))
+#
+#     db_name = 'crystal'
+#     table_item_display_order = eedata_generic_items_preitems+('frequency', 'load_c', 'esr', 'stability_ppm')+eedata_generic_items_postitems
 
 # todo: add
 # eedata_mosfet_params = eedata_generic_spec + [
