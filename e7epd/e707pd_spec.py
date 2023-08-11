@@ -55,9 +55,9 @@ The spec for any component. NOTE: this MUST match the parts table's keys
 _BasePartItems = {
     'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
     'ipn': SpecLineItem('IPN', ShowAsEnum.normal, str, True),
-    'package': SpecLineItem('Mfr Part #', ShowAsEnum.normal, str, False),
-    'mfr_part_numb': SpecLineItem('Manufacturer', ShowAsEnum.normal, str, False),
-    'manufacturer': SpecLineItem('Package', ShowAsEnum.normal, str, True),
+    'mfg_part_numb': SpecLineItem('Mfg Part #', ShowAsEnum.normal, str, False),
+    'manufacturer': SpecLineItem('Manufacturer', ShowAsEnum.normal, str, False),
+    'package': SpecLineItem('Package', ShowAsEnum.normal, str, True),
     'storage': SpecLineItem('Storage Location', ShowAsEnum.normal, str, False),
     'comments': SpecLineItem('Comments', ShowAsEnum.normal, str, False),
     'datasheet': SpecLineItem('Datasheet', ShowAsEnum.normal, str, False),
@@ -65,7 +65,7 @@ _BasePartItems = {
 }
 
 
-eedata_generic_items_preitems = ('stock', 'ipn', 'mfr_part_numb', 'manufacturer')
+eedata_generic_items_preitems = ('stock', 'ipn', 'mfg_part_numb', 'manufacturer')
 eedata_generic_items_postitems = ('package', 'storage', 'comments', 'datasheet', 'user')
 
 

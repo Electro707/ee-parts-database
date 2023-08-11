@@ -249,7 +249,6 @@ class CLI:
             super().__init__()
 
     def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
-        # todo: have Digikey stuff be stored in database's config anyways
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
         self.dk = DigikeyHandler(self.db.config)
@@ -282,31 +281,50 @@ class CLI:
         # Replace default argument
         if existing_ipn_list is None:
             existing_ipn_list = []
-        # If the exist
-        # if len(existing_mfr_list) == 0 and must_already_exist is True:
-        #     raise UserWarning("Internal Error: existing_mfr_list is None but must_already_exist is True")
         if len(existing_ipn_list) != 0:
-            mfr_part_numb = questionary.autocomplete("Enter the manufacturer part number (or scan a Digikey barcode): ", choices=existing_ipn_list).ask()
+            ipn_entered = questionary.autocomplete("Enter the IPN (or scan a Digikey barcode): ", choices=existing_ipn_list).ask()
         else:
-            mfr_part_numb = questionary.text("Enter the manufacturer part number (or scan a Digikey barcode): ").ask()
-        if mfr_part_numb == '' or mfr_part_numb is None:
-            console.print("[red]Must have a manufacturer part number[/]")
+            ipn_entered = questionary.text("Enter the IPN (or scan a Digikey barcode): ").ask()
+        if ipn_entered == '' or ipn_entered is None:
+            console.print("[red]Must have an IPN[/]")
             raise self._HelperFunctionExitError()
-        mfr_part_numb = mfr_part_numb.strip()
-        mfr_part_numb = mfr_part_numb.upper()
-        if mfr_part_numb.startswith('[)>'):
+
+        ipn_entered = ipn_entered.strip()
+        ipn_entered = ipn_entered.upper()
+
+        if ipn_entered.startswith('[)>'):
             try:
-                mfr_part_numb, p = self.dk.scan_digikey_barcode(mfr_part_numb)
+                # todo: fix this, as it currently won't work this way
+                mfr_part_numb, p = self.dk.scan_digikey_barcode(ipn_entered)
             except KeyboardInterrupt:
                 raise self._HelperFunctionExitError()
+
         if must_already_exist is True:
-            if mfr_part_numb not in existing_ipn_list:
+            if ipn_entered not in existing_ipn_list:
                 console.print("[red]Part must already exist in the database[/]")
-                raise self._HelperFunctionExitError(mfr_part_numb)
+                raise self._HelperFunctionExitError(ipn_entered)
         elif must_already_exist is False:
-            if mfr_part_numb in existing_ipn_list:
+            if ipn_entered in existing_ipn_list:
                 console.print("[red]Part must not already exist in the database, which it does![/]")
-                raise self._HelperFunctionExitError(mfr_part_numb)
+                raise self._HelperFunctionExitError(ipn_entered)
+        return ipn_entered
+
+    def _ask_mfg_part_number(self, current_ipn: str = None):
+        prompt = "Enter the manufacturer part number: "
+        if current_ipn:
+            prompt = "Enter the MGF part number or just Enter to copy the IPN: "
+        mfr_part_numb = questionary.text(prompt).ask()
+        if mfr_part_numb == '':
+            if current_ipn is None:
+                console.print("[red]Must have a manufacturer part number[/]")
+                raise self._HelperFunctionExitError()
+            else:
+                console.print("Selecting current IPN as MGF part number")
+                return current_ipn
+
+        mfr_part_numb = mfr_part_numb.strip()
+        mfr_part_numb = mfr_part_numb.upper()
+
         return mfr_part_numb
 
     def _ask_for_pcb_parts(self) -> list:
@@ -374,7 +392,7 @@ class CLI:
         for part in parts_list:
             row = []
             for spec_db_name in part_type.table_display_order:
-                to_display = getattr(part, spec_db_name)
+                to_display = part[spec_db_name]
                 display_as = part_type.items[spec_db_name].shows_as
                 if to_display is not None:
                     if display_as == ShowAsEnum.engineering:
@@ -408,11 +426,11 @@ class CLI:
         for s in specs_selected:
             autocomplete_choices = self.get_autocomplete_list(s, part_type.db_type_name)
             try:
-                inp, op = self.ask_for_spec_input_with_operator(s, part_type.items[s], autocomplete_choices)
+                inp, op = self.ask_for_spec_input_with_operator(part_type, s, autocomplete_choices)
             except KeyboardInterrupt:
                 console.print("Canceled part lookup")
                 return
-            search_filter.append({'db_name': spec['db_name'], 'val': inp, 'op': op})
+            search_filter.append({'db_name': s, 'val': inp, 'op': op})
         try:
             parts_list = part_db.get_sorted_parts(search_filter)
         except e7epd.EmptyInDatabase:
@@ -423,7 +441,7 @@ class CLI:
     def print_parts(self, part_type: e7epd.spec.PartSpec = None):
         if part_type is None:
             part_type = self.choose_component()
-        if self.db.get_number_of_parts_in_db(part_type):
+        if self.db.get_number_of_parts_in_db(part_type) == 0:
             console.print("[italic red]Sorry, but there are no parts for that component[/]")
             return
         all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=True).ask()
@@ -458,9 +476,10 @@ class CLI:
         op = '=='
         spec = part_type.items[spec_name]
         while 1:
-            if spec_name == 'mfr_part_numb':
+            # todo: do we need the following case handling below??
+            if spec_name == 'ipn':
                 try:
-                    inp = self._ask_ipn([i['mfr_part_numb'] for i in self.db.get_all_parts(part_type)])
+                    inp = self._ask_ipn(self.db.get_all_parts_one_keys(part_type, 'ipn'))
                 except self._HelperFunctionExitError:
                     raise KeyboardInterrupt()
             else:
@@ -471,7 +490,7 @@ class CLI:
             if inp is None:
                 raise KeyboardInterrupt()
             if inp == '':
-                if spec['required'] is True:
+                if spec.required is True:
                     console.print("You must enter this spec as it's required")
                     continue
                 else:
@@ -525,7 +544,7 @@ class CLI:
         autocomplete_choices = None
         if db_name == 'manufacturer' and table_name == 'ic':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_manufacturers']
-        if db_name == 'manufacturer' and table_name == 'resistance':
+        if db_name == 'manufacturer' and table_name == 'resistor':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_manufacturers']
         elif db_name == 'ic_type' and table_name == 'ic':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_types']
@@ -544,36 +563,35 @@ class CLI:
         # Package Auto-Helpers
         elif db_name == 'package' and table_name == 'ic':
             autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_packages']
-        elif db_name == 'package' and (table_name == 'resistance' or table_name == 'capacitor' or table_name == 'inductor'):
+        elif db_name == 'package' and (table_name == 'resistor' or table_name == 'capacitor' or table_name == 'inductor'):
             autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_packages']
         return autocomplete_choices
 
-    def get_partdb_and_ipn(self, part_db: e7epd.E7EPD.GenericComponent = None, mfg_must_exist: bool = None):
+    def get_partdb_and_ipn(self, part_db: e7epd.spec.PartSpec = None, ipn_must_exist: bool = None):
         """
         Helper function to get the manufacturer part number and component database
         Args:
             part_db: The selected component database. If not given, this function will return one depending on the
                      manufacturer part number
-            mfg_must_exist: Whether the manufacturer part number must already exist in the database
+            ipn_must_exist: Whether the manufacturer part number must already exist in the database
 
         Returns: A tupple of a selected component database and the manufacturer part number
         """
         if part_db is None:
-            all_component_dict = self.db.get_all_component_part_number()
-            all_mfr_list = [item for lists in all_component_dict.values() for item in lists]
+            all_ipn_list = self.db.get_all_parts_one_keys(None, 'ipn')
         else:
-            all_mfr_list = part_db.get_all_mfr_part_numb_in_db()
+            all_ipn_list = self.db.get_all_parts_one_keys(part_db, 'ipn')
 
         try:
-            mfr_part_numb = self._ask_ipn(all_mfr_list, must_already_exist=mfg_must_exist)
+            ipn_number = self._ask_ipn(all_ipn_list, must_already_exist=ipn_must_exist)
         except self._HelperFunctionExitError:
             raise self._HelperFunctionExitError()
+
         if part_db is None:
-            for c in all_component_dict:
-                if mfr_part_numb in all_component_dict[c]:
-                    part_db = self.db.components[c]
-                    break
-        return part_db, mfr_part_numb
+            t = self.db.get_part_by_ipn(ipn_number)['type']
+            part_db = self.db.get_part_spec_by_db_name(t)
+
+        return part_db, ipn_number
 
     def add_new_part(self, part_type: e7epd.spec.PartSpec = None):
         """ Function gets called when a part is to be added """
@@ -593,38 +611,41 @@ class CLI:
                         self.add_stock_to_part(part_type, e.extra_data)
                 return
             new_part = {'ipn': ipn}
-            for spec_db_name in part_type.items:
+            for spec_db_name in part_type.table_display_order:
                 # Skip over the ipn as we already have that
                 if spec_db_name == 'ipn':
                     continue
-                # Select an autocomplete choice, or None if there isn't any
-                autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_type.db_type_name)
-                # Get the spec
-                spec = part_type.items[spec_db_name]
-                # Ask the user for that property
-                try:
-                    new_part[spec_db_name] = self.ask_for_spec_input(part_type, spec_db_name, autocomplete_choices)
-                except KeyboardInterrupt:
-                    console.print("Did not add part")
-                    return
+                elif spec_db_name == 'mfg_part_numb':
+                    try:
+                        new_part['mfg_part_numb'] = self._ask_mfg_part_number(new_part['ipn'])
+                    except self._HelperFunctionExitError:
+                        raise KeyboardInterrupt()
+                else:
+                    # Select an autocomplete choice, or None if there isn't any
+                    autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_type.db_type_name)
+                    try:        # Ask the user for that property
+                        new_part[spec_db_name] = self.ask_for_spec_input(part_type, spec_db_name, autocomplete_choices)
+                    except KeyboardInterrupt:
+                        console.print("Did not add part")
+                        return
             self.db.add_new_part(part_type, new_part)
         except KeyboardInterrupt:
             console.print("\nOk, no part is added")
             return
 
-    def delete_part(self, part_db: e7epd.E7EPD.GenericComponent):
+    def delete_part(self, part_db: e7epd.spec.PartSpec):
         """ This gets called when a part is to be deleted """
         try:
-            part_db, mfr_part_numb = self.get_partdb_and_ipn(part_db, True)
+            part_db, ipn = self.get_partdb_and_ipn(part_db, True)
         except self._HelperFunctionExitError:
             return
         if questionary.confirm("ARE YOU SURE...AGAIN???", auto_enter=False, default=False).ask():
             try:
-                part_db.delete_part_by_mfr_number(mfr_part_numb)
+                self.db.delete_part(part_db, ipn)
             except e7epd.EmptyInDatabase:
                 console.print("[red]The manufacturer is not in the database[/]")
             else:
-                console.print("Deleted %s from the database" % mfr_part_numb)
+                console.print(f"Deleted {ipn} from the database")
         else:
             console.print("Did not delete the part, it is safe.")
 
@@ -651,20 +672,20 @@ class CLI:
                     continue
                 break
             component['stock'] += add_by
-            self.db.update_stock_from_ipn(ipn, component['stock'])
+            self.db.update_part_stock(ipn, component['stock'])
             console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(component['stock']))
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
 
-    def remove_stock_from_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
+    def remove_stock_from_part(self, part_db: e7epd.spec.PartSpec = None):
         try:
             try:
-                part_db, mfr_part_numb = self.get_partdb_and_ipn(part_db, True)
+                part_db, ipn = self.get_partdb_and_ipn(part_db, True)
             except self._HelperFunctionExitError:
                 return
-            component = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
-            console.print('There are {:d} parts of the selected component'.format(component.stock))
+            component = self.db.get_part_by_ipn(ipn)
+            console.print('There are {:d} parts of the selected component'.format(component['stock']))
             while 1:
                 remove_by = questionary.text("Enter how many components to remove from this part?: ").ask()
                 if remove_by is None:
@@ -678,40 +699,39 @@ class CLI:
                     console.print("Must be greater than 0")
                     continue
                 break
-            if component.stock - remove_by < 0:
+            if component['stock'] - remove_by < 0:
                 console.print("[red]Stock will go to negative[/]")
-                console.print("[red]If you want to make the stock zero, restart this operation and remove {:d} parts instead[/]".format(component.stock))
+                console.print("[red]If you want to make the stock zero, restart this operation and remove {:d} parts instead[/]".format(component['stock']))
                 return
-            component.stock -= remove_by
-            part_db.commit()
-            console.print('[green]Removed to your stock :). There is now {:d} left of it.[/]'.format(component.stock))
+            component['stock'] -= remove_by
+            self.db.update_part_stock(ipn, component['stock'])
+            console.print('[green]Removed to your stock :). There is now {:d} left of it.[/]'.format(component['stock']))
         except KeyboardInterrupt:
             console.print("Ok, no stock is changed")
             return
 
-    def edit_part(self, part_db: e7epd.E7EPD.GenericComponent = None):
+    def edit_part(self, part_db: e7epd.spec.PartSpec = None):
         """
         Function to update the part's properties
         """
-        if part_db is None:
-            part_db = self.choose_component()
+        to_update = {}
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
-                mfr_part_numb = self._ask_ipn(part_db.get_all_mfr_part_numb_in_db(), must_already_exist=True)
+                part_db, ipn = self.get_partdb_and_ipn(part_db, True)
             except self._HelperFunctionExitError:
                 return
-            part = part_db.get_part_by_mfr_part_numb(mfr_part_numb)
+            component = self.db.get_part_by_ipn(ipn)
             while 1:
                 q = []
-                for spec_db_name in part_db.table_item_display_order:
-                    if spec_db_name == "mfr_part_numb":
+                for spec_db_name in part_db.table_display_order:
+                    if spec_db_name == "ipn":
                         continue
-                    spec = self.find_spec_by_db_name(part_db.table_item_spec, spec_db_name)
+                    spec = part_db.items[spec_db_name]
                     if spec is None:
                         console.print("[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
                         return
-                    q.append(questionary.Choice(title="{:}: {:}".format(spec['showcase_name'], getattr(part, spec['db_name'])), value=spec))
+                    q.append(questionary.Choice(title="{:}: {:}".format(spec.showcase_name, component[spec_db_name]), value=spec_db_name))
                 q.append(questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Save and Exit')]), value='exit_save'))
                 q.append(questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('red', 'Exit without Saving')]), value='no_save'))
                 to_change = questionary.select("Choose a field to edit:", q).ask()
@@ -723,12 +743,12 @@ class CLI:
                 if to_change == 'no_save':
                     raise KeyboardInterrupt()
                 try:
-                    setattr(part, to_change['db_name'], self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change['db_name'], part_db.table_name)))
+                    new_val = self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change, part_db.db_type_name))
+                    to_update[to_change] = new_val
                 except KeyboardInterrupt:
                     console.print("Did not change spec")
                     continue
         except KeyboardInterrupt:
-            part_db.rollback()
             console.print("Did not change part")
             return
 

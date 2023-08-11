@@ -347,7 +347,7 @@ class E7EPD:
         self.users_coll = self.db['user']
 
         # Constructor for available part types:
-        self.comp_types = {
+        self.comp_types = {     # type: typing.Dict[str, spec.PartSpec]
             'Resistor': spec.Resistor,
         }
 
@@ -372,7 +372,7 @@ class E7EPD:
         """
         pass
 
-    def check_if_already_in_db_by_ipn(self, ipn: str) -> (None, int):
+    def check_if_already_in_db_by_ipn(self, ipn: str) -> (None, bool):
         """
         Checks if an ipn is already in the database
 
@@ -383,10 +383,10 @@ class E7EPD:
         """
         if ipn is not None:
             d = self.part_coll.count_documents({'ipn': ipn})
-            if len(d) == 0:
-                return None
-            elif len(d) == 1:
-                return d[0].id
+            if d == 0:
+                return False
+            elif d == 1:
+                return True
             else:
                 raise UserWarning("There is more than 1 entry for a manufacturer part number")
         else:
@@ -408,83 +408,136 @@ class E7EPD:
         d = self.part_coll.count_documents({'type': part_class.db_type_name})
         return d
 
-    def get_all_parts(self, part_class: spec.PartSpec) -> typing.List[dict]:
-        d = self.part_coll.find({'type': part_class.db_type_name})
+    def get_all_parts(self, part_class: typing.Union[spec.PartSpec, None]) -> typing.List[dict]:
+        q = {}
+        if part_class is not None:
+            q['type'] = part_class.db_type_name
+        d = self.part_coll.find(q)
         return list(d)
 
-    def get_all_parts_one_keys(self, part_class: spec.PartSpec, ret_key: str) -> list:
+    def get_all_parts_one_keys(self, part_class: typing.Union[spec.PartSpec, None], ret_key: str) -> list:
         ret = []
-        d = self.part_coll.find({'type': part_class.db_type_name})
+        q = {}
+        if part_class is not None:
+            q['type'] = part_class.db_type_name
+        d = self.part_coll.find(q)
         for d_i in d:
             ret.append(d_i[ret_key])
         return ret
 
     def add_new_part(self, part_class: spec.PartSpec, new_part: dict):
-        # todo: do a validation on the new_part dict
+        # Validate that all given keys are part of the spec, and the type matches
+        for d in new_part:
+            if d not in part_class.items.keys():
+                raise InputException(f"Given key of {d} is not part of the spec")
+            try:
+                part_class.items[d].input_type(new_part[d])
+            except ValueError:
+                raise InputException(f"Input value of {new_part[d]} for {d} is not of type {part_class.items[d].input_type}")
+        # Set type
         new_part['type'] = part_class.db_type_name
+        # Check if all required keys are matched
+        for d in part_class.items:
+            if part_class.items[d].required:
+                if d not in new_part:
+                    raise InputException(f"Required key of {d} is not found in the new part dict")
+        # Add part to DB
         self.part_coll.insert_one(new_part)
 
-    def update_stock_from_ipn(self, ipn: str, new_qty: int):
-        self.part_coll.find_one_and_update({'ipn': ipn}, {"$set": {'stock': new_qty}})
+    def delete_part(self, part_class: spec.PartSpec, ipn: str):
+        self.part_coll.delete_one({'type': part_class.db_type_name, 'ipn': ipn})
 
-    def get_all_ipb_in_db(self):
+    def update_part(self, part_class: typing.Union[spec.PartSpec, None], ipn: str, new_values: dict):
         """
-        Gets all stored manufacturer part numbers in the database
+        Updates a part with a certain type and IPN with some new values given as a dictionary
 
-        Returns: A list containing all manufacturer part number
+        Args:
+            part_class: The part class to update. If given as None, then type checking on new_values is not done (thus recommended!!)
+            ipn: The IPN of the part to update
+            new_values: The new dictionary key-values to update the part with
         """
-        d = self.session.query(spec.Parts).with_entities(spec.Parts.ipn).all()
-        return [p.ipn for p in d]
+        q = {'ipn': ipn}
+        if part_class is not None:
+            q['type'] = part_class.db_type_name
+            for d in new_values:
+                if d not in part_class.items.keys():
+                    raise InputException(f"Given key of {d} is not part of the spec")
+                try:
+                    part_class.items[d].input_type(new_values[d])
+                except ValueError:
+                    raise InputException(f"Input value of {new_values[d]} for {d} is not of type {part_class.items[d].input_type}")
+        self.part_coll.find_one_and_update(q, {"$set": new_values})
+
+    def update_part_stock(self, ipn: str, new_qty: int):
+        """
+        Function to purely update a part's stock
+
+        Args:
+            ipn: The IPN to update the part for
+            new_qty: The new part quantity
+        """
+        self.update_part(None, ipn, {'stock': new_qty})
+        # self.part_coll.find_one_and_update({'ipn': ipn}, {"$set": {'stock': new_qty}})
+
+    def get_part_spec_by_db_name(self, db_name: str):
+        for i in self.comp_types:
+            if db_name == self.comp_types[i].db_type_name:
+                return self.comp_types[i]
+        raise InputException(f"Cannot find part type from db_name of {db_name}")
 
     def wipe_database(self):
         """
         Wipes the component databases
+
+        .. warning::
+            THIS IS A DANGEROUS FUNCTION. Only call if you are sure. No going back
+
         """
-        spec.Parts.metadata.drop_all(self.db_conn)
-        self.session.commit()
-        # Recreate table
-        spec.Parts.metadata.create_all(self.db_conn)
+        self.part_coll.drop()
 
     def update_database(self):
         """
         Updates the database to the most recent revision
 
-        todo: this function needs to be updated for 0.7 changes
+        todo: from 0.6 to 0.7, make an external migration script!
         """
-        def mydefault(context):
-            return context.get_current_parameters()['name']
+        v = self.config.get_db_version()
+        # note: no new version to upgrade to yet
+        self.config.store_current_db_version()
 
-        with self.db_conn.connect() as conn:
-            ctx = MigrationContext.configure(conn)
-            op = Operations(ctx)
-            self.log.info("Backing up database before applying changes")
-            self.backup_db()
-            v = self.config.get_db_version()
-            if v == '0.2':   # From 0.2 -> 0.3
-                for c in self.components:
-                    op.add_column(self.components[c].table_name, Column('storage', String(spec.default_string_len)))
-                    op.drop_column(self.components[c].table_name, 'part_comments')
-                    op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments', type_=Text)
-                # Remove the capacitor's power column
-                op.drop_column(self.components['Capacitors'].table_name, 'power')
-                v = '0.3'
-            if v == '0.3':   # From 0.3 -> 0.4
-                # Add the datasheet column for each component
-                for c in self.components:
-                    op.add_column(self.components[c].table_name, Column('datasheet', Text))
-                op.alter_column(self.pcbs.table_name, 'project_name', type_=String(spec.default_string_len), new_column_name='board_name')
-                op.add_column(self.pcbs.table_name, Column('parts', JSON, nullable=False))
-            if v == '0.4':
-                for c in self.components:
-                    op.drop_column(self.components[c].table_name, 'id')
-                    op.create_primary_key(None, self.components[c].table_name, ['mfr_part_numb'])
-                    op.add_column(self.components[c].table_name, Column('user', String(spec.default_string_len)))
-            if v == '0.5':
-                for c in self.components:
-                    op.add_column(self.components[c].table_name, Column('ipn', String(spec.default_string_len), default=mydefault, nullable=False))
-                    # op.drop_constraint(self.components[c].table_name, 'mfr_part_numb', type_='primary')
-                    # op.create_primary_key(None, self.components[c].table_name, ['ipn'])
-            self.config.store_current_db_version()
+        # def mydefault(context):
+        #     return context.get_current_parameters()['name']
+        #
+        # with self.db_conn.connect() as conn:
+        #     ctx = MigrationContext.configure(conn)
+        #     op = Operations(ctx)
+        #     self.log.info("Backing up database before applying changes")
+        #     self.backup_db()
+        #     v = self.config.get_db_version()
+        #     if v == '0.2':   # From 0.2 -> 0.3
+        #         for c in self.components:
+        #             op.add_column(self.components[c].table_name, Column('storage', String(spec.default_string_len)))
+        #             op.drop_column(self.components[c].table_name, 'part_comments')
+        #             op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments', type_=Text)
+        #         # Remove the capacitor's power column
+        #         op.drop_column(self.components['Capacitors'].table_name, 'power')
+        #         v = '0.3'
+        #     if v == '0.3':   # From 0.3 -> 0.4
+        #         # Add the datasheet column for each component
+        #         for c in self.components:
+        #             op.add_column(self.components[c].table_name, Column('datasheet', Text))
+        #         op.alter_column(self.pcbs.table_name, 'project_name', type_=String(spec.default_string_len), new_column_name='board_name')
+        #         op.add_column(self.pcbs.table_name, Column('parts', JSON, nullable=False))
+        #     if v == '0.4':
+        #         for c in self.components:
+        #             op.drop_column(self.components[c].table_name, 'id')
+        #             op.create_primary_key(None, self.components[c].table_name, ['mfr_part_numb'])
+        #             op.add_column(self.components[c].table_name, Column('user', String(spec.default_string_len)))
+        #     if v == '0.5':
+        #         for c in self.components:
+        #             op.add_column(self.components[c].table_name, Column('ipn', String(spec.default_string_len), default=mydefault, nullable=False))
+        #             # op.drop_constraint(self.components[c].table_name, 'mfr_part_numb', type_='primary')
+        #             # op.create_primary_key(None, self.components[c].table_name, ['ipn'])
 
     def is_latest_database(self) -> bool:
         """
