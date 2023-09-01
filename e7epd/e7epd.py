@@ -335,7 +335,7 @@ class E7EPD:
         #     return ret_str
 
     def __init__(self, db_client: pymongo.MongoClient):
-        self.log = logging.getLogger('Database')
+        self.log = logging.getLogger('E7EPD')
         self.db_client = db_client              # Store the connection engine
 
         self.db = self.db_client['ee-parts-db']       # The database itself
@@ -344,6 +344,7 @@ class E7EPD:
         self.config = E7EPDConfigTable(self.db)
 
         self.part_coll = self.db['parts']
+        self.pcb_coll = self.db['pcbs']
         self.users_coll = self.db['user']
 
         # Constructor for available part types:
@@ -354,6 +355,24 @@ class E7EPD:
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
             self.config.store_current_db_version()
+
+    def add_new_pcb(self, pcb_data: dict):
+        # Validate that all given keys are part of the spec, and the type matches
+        for d in pcb_data:
+            if d not in spec.PCBItems.keys():
+                raise InputException(f"Given key of {d} is not part of the spec")
+            try:
+                spec.PCBItems[d].input_type(pcb_data[d])
+            except ValueError:
+                raise InputException(f"Input value of {pcb_data[d]} for {d} is not of type {spec.PCBItems[d].input_type}")
+
+        # Check if all required keys are matched
+        for d in spec.PCBItems:
+            if spec.PCBItems[d].required:
+                if d not in pcb_data:
+                    raise InputException(f"Required key of {d} is not found in the new part dict")
+        # Add part to DB
+        self.pcb_coll.insert_one(pcb_data)
 
     def add_user(self, u: spec.UserSpec):
         # Do a check to ensure the same name does not exist
@@ -372,7 +391,7 @@ class E7EPD:
         """
         pass
 
-    def check_if_already_in_db_by_ipn(self, ipn: str) -> (None, bool):
+    def check_if_already_in_db_by_ipn(self, ipn: str) -> bool:
         """
         Checks if an ipn is already in the database
 
@@ -392,23 +411,38 @@ class E7EPD:
         else:
             raise InputException("Did not give a manufacturer part number")
 
-    def get_all_parts_type(self, part_class: spec.PartSpec) -> typing.List[dict]:
-        if part_class.db_type_name is None:
-            raise UserWarning("Invalid input part class")
-        d = self.part_coll.find({'type': part_class.db_type_name})
-        return list(d)
-
     def get_part_by_ipn(self, ipn: str) -> dict:
+        """
+
+        Args:
+            ipn: The IPN to search for
+
+        Returns: The part's info
+        """
         d = self.part_coll.find_one({'ipn': ipn})
         return d
 
     def get_number_of_parts_in_db(self, part_class: spec.PartSpec) -> int:
+        """
+        Gets the number of parts in the database per given type
+        Args:
+            part_class: he part spec class, which is used to determine the type
+
+        Returns: The number of documents in the database
+        """
         if part_class.db_type_name is None:
             raise UserWarning("Invalid input part class")
         d = self.part_coll.count_documents({'type': part_class.db_type_name})
         return d
 
     def get_all_parts(self, part_class: typing.Union[spec.PartSpec, None]) -> typing.List[dict]:
+        """
+        Get all parts in the database , optionally filtering by the part type
+        Args:
+            part_class: The part spec class, which is used to determine the type
+
+        Returns: A dist of all part's data of the specific type
+        """
         q = {}
         if part_class is not None:
             q['type'] = part_class.db_type_name
@@ -416,16 +450,27 @@ class E7EPD:
         return list(d)
 
     def get_all_parts_one_keys(self, part_class: typing.Union[spec.PartSpec, None], ret_key: str) -> list:
+        """
+        Returns all parts in the database, but filtered to only return one key
+        Args:
+            part_class: The part spec class, which is used to determine the type
+            ret_key: The key to return
+
+        Returns: A list of all part's value per the given key
+        """
         ret = []
-        q = {}
-        if part_class is not None:
-            q['type'] = part_class.db_type_name
-        d = self.part_coll.find(q)
+        d = self.get_all_parts(part_class)
         for d_i in d:
             ret.append(d_i[ret_key])
         return ret
 
     def add_new_part(self, part_class: spec.PartSpec, new_part: dict):
+        """
+        Adds a new part to the database
+        Args:
+            part_class: The part spec class, which is used to determine the type
+            new_part: A dictionary storing all the values for the new part
+        """
         # Validate that all given keys are part of the spec, and the type matches
         for d in new_part:
             if d not in part_class.items.keys():
@@ -564,3 +609,27 @@ class E7EPD:
         #     result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
         # with open(new_db_file, 'x') as f:
         #     json.dump(result, f, indent=4)
+
+
+def print_formatted_from_spec(part_class: spec.PartSpec, part_data: dict) -> typing.Union[None, str]:
+    """
+    Prints out a nice string depending on the given part_class
+
+    Args:
+
+    Returns: A nicely formatted string describing the resistor, in the example above it will return `A 1k resistor with >1% tolerance`
+    """
+    ret_str = None
+    if part_class is spec.Resistor:
+        ret_str = f"A {str(EngNumber(part_data['resistance'])):s} resistor"
+
+        tolerance = part_data['tolerance']
+        if tolerance is not None:
+            ret_str += " with a "
+            ret_str += f"{tolerance:.1f}% tolerance"
+
+        power = part_data['power']
+        if power is not None:
+            ret_str += f" with {power:.1f}%W capability"
+
+    return ret_str

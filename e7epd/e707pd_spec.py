@@ -11,7 +11,8 @@ class ShowAsEnum(enum.Enum):
     normal = enum.auto()            # Display it as regular text/number
     engineering = enum.auto()       # Show it in engineering notation
     precentage = enum.auto()        # Show it as a percentage
-    fraction = enum.auto()
+    fraction = enum.auto()          # Show as a fraction
+    custom = enum.auto()            # For cases where the printing is specially handled
 
 class UnicodeCharacters(enum.Enum):
     Omega = '\u03A9'
@@ -193,6 +194,14 @@ Resistor = PartSpec(
 # ]
 # eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'parts', 'storage', 'comments']
 
+PCBItems = {
+    'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
+    'ipn': SpecLineItem('IPN', ShowAsEnum.normal, str, True),
+    'storage': SpecLineItem('Storage Location', ShowAsEnum.normal, str, False),
+    'comments': SpecLineItem('Comments', ShowAsEnum.normal, str, False),
+    'user': SpecLineItem('User', ShowAsEnum.normal, str, False),
+    'parts': SpecLineItem('Parts', ShowAsEnum.custom, list, True)
+}
 
 
 """

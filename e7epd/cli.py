@@ -28,6 +28,7 @@ import pymongo.errors
 import pkg_resources
 import re
 import warnings
+import argparse
 # Local Modules Import
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
@@ -39,10 +40,6 @@ except ImportError:
 else:
     digikey_api_en = True
 
-
-l = logging.getLogger()
-l.setLevel(logging.WARNING)
-l.addHandler(RichHandler())
 
 console = rich.console.Console(style="blue")
 
@@ -105,17 +102,23 @@ class CLIConfig:
         if database_name not in self.config.db_list:
             raise self.NoLastDBSelectionException()
 
+        db_conf = self.config.db_list[database_name]
+
         self.config.last_db = database_name
-        if self.config.db_list[database_name]['type'] == 'local':
+
+        if db_conf['type'] == 'local':
             raise UserWarning("Not supported, deprecated in 0.7.0")
-        elif self.config.db_list[database_name]['type'] == 'mysql_server':
+        elif db_conf['type'] == 'mysql_server':
             raise UserWarning("Not supported, deprecated in 0.7.0")
-        elif self.config.db_list[database_name]['type'] == 'postgress_server':
+        elif db_conf['type'] == 'postgress_server':
             raise UserWarning("Not supported, deprecated in 0.7.0")
-        elif self.config.db_list[database_name]['type'] == 'mongodb':
-            # todo: enable authentication login
+        elif db_conf['type'] == 'mongodb':
             # todo: enable socket connection
-            conn = pymongo.MongoClient("mongodb://{}:27017/".format(self.config.db_list[database_name]['db_host']), serverSelectionTimeoutMS=1000*2)
+            if db_conf['auth']:
+                conn_str = f"mongodb://{db_conf['username']}:{db_conf['password']}@{db_conf['db_host']}:27017/"
+            else:
+                conn_str = f"mongodb://{db_conf['db_host']}:27017/"
+            conn = pymongo.MongoClient(conn_str, serverSelectionTimeoutMS=1000*2)
             try:
                 # The ping command is cheap and does not require auth.
                 conn.admin.command('ping')
@@ -147,9 +150,10 @@ class CLIConfig:
     def save_database_as_postgress(self, database_name: str, username: str, password: str, db_name: str, host: str):
         raise DeprecationWarning("Removed in 0.7.0")
 
-    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str):
+    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str, authenticated: bool = False):
         self._save_database_as_hostsb(database_name, username, password, host)
         self.config.db_list[database_name]['type'] = 'mongodb'
+        self.config.db_list[database_name]['auth'] = authenticated
         self.save()
 
     def _save_database_as_hostsb(self, database_name: str, username: str, password: str, host: str):
@@ -406,7 +410,7 @@ class CLI:
         console.print(ta)
 
     def print_all_parts(self, part_type: e7epd.spec.PartSpec):
-        parts_list = self.db.get_all_parts_type(part_type)
+        parts_list = self.db.get_all_parts(part_type)
         self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
     def print_filtered_parts(self, part_type: e7epd.spec.PartSpec):
@@ -714,7 +718,7 @@ class CLI:
         """
         Function to update the part's properties
         """
-        to_update = {}
+        to_update = {}  # A separate variable for only keys that need changing
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
             try:
@@ -726,6 +730,7 @@ class CLI:
                 q = []
                 for spec_db_name in part_db.table_display_order:
                     if spec_db_name == "ipn":
+                        # todo: allow IPN to be changed. The update_part function *should* be able to handle it just fine?
                         continue
                     spec = part_db.items[spec_db_name]
                     if spec is None:
@@ -738,13 +743,14 @@ class CLI:
                 if to_change is None:
                     raise KeyboardInterrupt()
                 if to_change == 'exit_save':
-                    part_db.commit()
+                    self.db.update_part(part_db, ipn, to_update)
                     break
                 if to_change == 'no_save':
                     raise KeyboardInterrupt()
                 try:
                     new_val = self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change, part_db.db_type_name))
                     to_update[to_change] = new_val
+                    component[to_change] = new_val
                 except KeyboardInterrupt:
                     console.print("Did not change spec")
                     continue
@@ -813,7 +819,7 @@ class CLI:
 
         return
 
-    def component_cli(self, part_db: e7epd.E7EPD.GenericComponent):
+    def component_cli(self, part_db: e7epd.spec.PartSpec):
         """ The CLI handler for components """
         while 1:
             to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Edit Part", self.return_formatted_choice]).ask()
@@ -901,17 +907,18 @@ class CLI:
                 elif t['type'] == 'mysql_server':
                     console.print("This is a mySQL server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t))
 
-    def digikey_api_settings_menu(self):
-        try:
-            self.check_for_dk_api()
-        except self._NoDigikeyApiError:
-            return
-        while 1:
-            to_do = questionary.select("What do you want to? ", choices=["Set ClientID and ClientSecret", self.return_formatted_choice]).ask()
-            if to_do is None or to_do == "Return":
-                break
-            if to_do == 'Set ClientID and ClientSecret':
-                self.digikey_api_config_setup()
+    # todo: this
+    # def digikey_api_settings_menu(self):
+    #     try:
+    #         self.check_for_dk_api()
+    #     except self._NoDigikeyApiError:
+    #         return
+    #     while 1:
+    #         to_do = questionary.select("What do you want to? ", choices=["Set ClientID and ClientSecret", self.return_formatted_choice]).ask()
+    #         if to_do is None or to_do == "Return":
+    #             break
+    #         if to_do == 'Set ClientID and ClientSecret':
+    #             self.digikey_api_config_setup()
 
     def main(self):
         # Check DB version before doing anything
@@ -973,8 +980,8 @@ class CLI:
                             break
                 elif to_do == 'Database Setting':
                     self.database_settings()
-                elif to_do == 'Digikey API Settings':
-                    self.digikey_api_settings_menu()
+                # elif to_do == 'Digikey API Settings':     # todo: this
+                #     self.digikey_api_settings_menu()
 
         except KeyboardInterrupt:
             pass
@@ -990,15 +997,28 @@ def ask_for_database(config: CLIConfig):
     is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mongoDb']).unsafe_ask()
     if is_server == 'mongoDb':
         host = questionary.text("What is the database host?").unsafe_ask()
-        # username = questionary.text("What is the database username?").unsafe_ask()
-        # password = questionary.password("What is the database password?").unsafe_ask()
-        # todo: add back
-        username = ""
-        password = ""
-        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host)
+        username = questionary.text("What is the database username (Enter nothing for un-auth)?").unsafe_ask()
+        if username == '':
+            password = ''
+            is_auth = False
+        else:
+            password = questionary.password("What is the database password?").unsafe_ask()
+            is_auth = True
+        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth)
 
 
 def main():
+    parser = argparse.ArgumentParser(description='E7EPD CLI Application')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
+    args = parser.parse_args()
+
+    l = logging.getLogger()
+    if args.verbose:
+        l.setLevel(logging.DEBUG)
+    else:
+        l.setLevel(logging.ERROR)
+    l.addHandler(RichHandler())
+
     c = CLIConfig()
     db_name = None
     while 1:

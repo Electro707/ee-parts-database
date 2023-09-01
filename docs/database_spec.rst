@@ -1,42 +1,60 @@
 E7EPD Database Specification
 ================================================
-**Rev 0.5**
+**Rev 0.6-dev**
+
+
+PyMongo
+---------------------------------
+This specification applies to a PyMongo Database. While any JSON-like document storage mechanism will be functional
+with this spec, it is currently not supported.
+
+Database Name
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The `ee-parts-db` database will be used for this specification.
+
+Collections
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The following collections will be created in the `ee-parts-db` database:
+
+- parts
+- pcbs
+- users
+- e7epd_config
 
 Specification Notes
 ---------------------------------
 Components
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-All components, when specified, will be based of the `GenericPart` table spec that contains common columns.
-Note that the `GenericPart` table doesn't exist by itself but is used in this document as columns that every
-other table should have
+All components, when specified, will be based of the `_BasePartItems` spec that contains common keys.
+Note that the `_BasePartItems` spec doesn't exist by itself but is used in this document as keys that every
+other part should have
 
-Different Tables Per Components
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-To allow for the parameterization of parts, and due to SQL's column nature where it's usually unchanged, each
-specific component type (like resistors, IC, etc) will have its own SQL table.
+All components will have an extra key: `type`. This allows to quickly determine what part type is per document,
+and what keys to be looking for.
+The `type` key's value will be described below per part type.
 
 Table Spec
 ---------------------------------
-GenericPart Table
+GenericPart Items
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ============= ========================= =========== =======================================================
-Name          SQL Type                  Required?   Description
+Name          Variable Type             Required?   Description
 ============= ========================= =========== =======================================================
-id            INTEGER PRIMARY KEY       YES         Each row in the database will contain an unique SQL ID
-stock         INT                       YES         The number of parts in stock
-mfr_part_numb VARCHAR                   YES         The manufacturer part number, used to distinguish each part from another
-manufacturer  VARCHAR                               The manufacturer of the component
-package       VARCHAR                   YES         The part's physical package
-storage       VARCHAR                               The part's storage location
-comments      TEXT                                  Comments about the part
-datasheet     TEXT                                  The datasheet of the part
+ipn           str                       YES
+stock         int                       YES         The number of parts in stock
+mfr_part_numb str                       YES         The manufacturer part number, used to distinguish each part from another
+manufacturer  str                                   The manufacturer of the component
+package       str                       YES         The part's physical package
+storage       str                                   The part's storage location
+comments      str                                   Comments about the part
+datasheet     str                                   The datasheet of the part
 ============= ========================= =========== =======================================================
 
 Resistor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
-Table Name: ``resistance``
+Append the *GenericPart* items to this table.
+Type: ``resistance``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -48,7 +66,7 @@ power         FLOAT                                 The resistor's power rating 
 
 Capacitor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* items to this table.
 Table Name: ``capacitor``
 
 ============= ========================= =========== =======================================================
@@ -63,7 +81,7 @@ cap_type      VARCHAR                               The capacitor types, which s
 
 Inductor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* items to this table.
 Table Name: ``inductor``
 
 ============= ========================= =========== =======================================================
@@ -172,7 +190,7 @@ max_i         FLOAT                                 The LED's maximum forward cu
 Fuse Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
-Table Name: ``fuse``
+Type: ``fuse``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -187,7 +205,7 @@ hold_i        FLOAT                                 The fuse's hold current
 Button/Switch Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* Table to this table.
-Table Name: ``button``
+Type: ``button``
 
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
@@ -210,23 +228,20 @@ build up a board given the current component's stock.
 
 PCB Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Table Name: ``pcb``
-
 ============= ========================= =========== =======================================================
-Name          SQL Type                  Required?   Description
+Name          Type                      Required?   Description
 ============= ========================= =========== =======================================================
-id            INTEGER PRIMARY KEY       YES         Each row in the database will contain an unique SQL ID
-stock         INT                       YES         The number of parts in stock
-board_name    VARCHAR                   YES         The board's name. Can also be thought of as the project's name
-rev           VARCHAR                   YES         The pcb's revision
-sub_rev       VARCHAR                               The pcb's sub-revision
-comments      TEXT                                  Comments about the part
-parts         JSON                      YES         A JSON list containing all of the parts used for this project
+stock         int                       YES         The number of parts in stock
+board_name    str                       YES         The board's name. Can also be thought of as the project's name
+rev           str                       YES         The pcb's revision
+sub_rev       str                                   The pcb's sub-revision
+comments      str                                   Comments about the part
+parts         list                      YES         A list containing all of the parts used for this project
 ============= ========================= =========== =======================================================
 
-Parts JSON List
+Parts List
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-The parts JSON is a list of dictionaries containing the all parts used for a particular board.
+The parts is a list of dictionaries containing the all parts used for a particular board.
 
 The dictionaries in this list is formatted as follows for a component:
 
@@ -240,18 +255,23 @@ alternatives  list          A list of alternative parts that can be used, each p
 ============= ============= =======================================================
 
 The part key above is a dictionary containing a set of filter key-value pairs that narrows down a part.
-For example, for a part with the manufacturer part number of "PART123", the part dict would be
+The part key can either be specific to a IPN, or to a generic part with key-based selection. In both cases, the
+`type` key is required to determine what part to look for.
+
+For example, for a part with the ipn of "PART123", the part dict would be
 .. code-block::
 
     {
-        mfr_part_numb: PART123
+        ipn: 'PART123'
+        type: 'resistor'
     }
 
-As the manufacturer part number is unique to each part, this filter would only find a single part. With a resistor
+As the ipn is unique to each part, this filter would only find a single part. With a resistor
 for example, where a specific part does not matter, the part dict would look something like
 .. code-block::
 
     {
+        type: 'resistor'
         resistance: 1000
         power: >0.125
         package: 0805
