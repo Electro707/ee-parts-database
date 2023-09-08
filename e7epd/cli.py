@@ -273,7 +273,7 @@ class CLI:
 
     def _ask_ipn(self, existing_ipn_list: list = None, must_already_exist: bool = None) -> str:
         """
-        Asks for the manufacturer part number. This function handles type hinting with a given list, checking if the mfgr
+        Asks for the IPN. This function handles type hinting with a given list, checking if the ipn
         is a Digikey barcode scan, and raises an error if the entered part number is already in the database or not.
 
         Args:
@@ -314,6 +314,7 @@ class CLI:
         return ipn_entered
 
     def _ask_mfg_part_number(self, current_ipn: str = None):
+        """ This function mainly exists in order to handle having the mfg part number be a copy of the ipn"""
         prompt = "Enter the manufacturer part number: "
         if current_ipn:
             prompt = "Enter the MGF part number or just Enter to copy the IPN: "
@@ -336,6 +337,7 @@ class CLI:
         Called when wanting to input parts for a PCB
         """
         all_parts_dict = []
+        all_ipn_parts = self.db.get_all_parts_by_keys(None, ret_key=['ipn', 'type'])
         while 1:
             new_part = {'part': {}}
             # Ask for the part itself, what it is and get the type
@@ -346,28 +348,34 @@ class CLI:
                 console.print("Done adding parts")
                 break
             elif specific_part == "Specific":
-                mgf = self._ask_ipn(self.db.get_all_mfr_part_numb_in_db(), True)
-                _, part_db = self.db.check_if_already_in_db_by_manuf(mgf)
-                new_part['part']['mfr_part_numb'] = mgf
-                new_part['comp_type'] = part_db.table_name
+                try:
+                    ipn = self._ask_ipn([i['ipn'] for i in all_ipn_parts], True)
+                except self._HelperFunctionExitError:
+                    console.print("[red]IPN must not exist in database[/]")
+                    continue
+                new_part['part']['ipn'] = ipn
+                new_part['type'] = [i['type'] for i in all_ipn_parts if i['ipn'] == ipn][0]
             elif specific_part == "Generic":
-                generic_part_db = self.choose_component()
-                new_part['comp_type'] = generic_part_db.table_name
-                for spec_db_name in generic_part_db.table_item_display_order:
-                    if spec_db_name in ['stock', 'mfr_part_numb', 'manufacturer', 'storage', 'comments', 'datasheet']:
+                try:
+                    part_type = self.choose_component()
+                except KeyboardInterrupt:
+                    console.print("[red]IPN must not exist in database[/]")
+                    continue
+                new_part['type'] = part_type.db_type_name
+                for spec_db_name in part_type.items:
+                    if spec_db_name in e7epd.spec.BasePartItems.keys():
                         continue
                     # Select an autocomplete choice, or None if there isn't any
-                    autocomplete_choices = self.get_autocomplete_list(spec_db_name, generic_part_db.table_name)
+                    autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_type.db_type_name)
                     # Get the spec
-                    spec = self.find_spec_by_db_name(generic_part_db.table_item_spec, spec_db_name)
+                    spec = part_type.items[spec_db_name]
                     if spec is None:
-                        console.print(
-                            "[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
+                        console.print("[red]INTERNAL ERROR: Got None when finding the spec for database name %s[/]" % spec_db_name)
                         raise self._HelperFunctionExitError()
                     # Ask the user for that property
                     try:
-                        val, op = self.ask_for_spec_input_with_operator(generic_part_db, spec, autocomplete_choices)
-                        new_part['part'][spec_db_name] = {'val': val, 'op': op}
+                        val, op = self.ask_for_spec_input_with_operator(spec, autocomplete_choices)
+                        new_part['part'][spec_db_name] = {'val': val, 'op': op.value}
                     except KeyboardInterrupt:
                         console.print("Did not add part")
                         raise self._HelperFunctionExitError()
@@ -376,11 +384,11 @@ class CLI:
                 continue
             # Ask for quantity
             try:
-                new_part['quantity'] = int(questionary.text("Enter quantity of this part used on this PCB:").ask())
+                new_part['qty'] = int(questionary.text("Enter quantity of this part used on this PCB:").ask())
             except ValueError:
                 console.print("[red]Invalid quantity[/]")
                 continue
-            new_part['quantity'] = questionary.text("Enter the designator/reference:").ask()
+            new_part['designator'] = questionary.text("Enter the designator/reference:").ask()
             all_parts_dict.append(new_part)
 
         if len(all_parts_dict) == 0:
@@ -410,6 +418,7 @@ class CLI:
         console.print(ta)
 
     def print_all_parts(self, part_type: e7epd.spec.PartSpec):
+        """ Prints all parts in the database per given type """
         parts_list = self.db.get_all_parts(part_type)
         self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
@@ -417,7 +426,7 @@ class CLI:
         """
         Prints all parts in a component database with filtering
         Args:
-            part_db: The component database to use
+            part_type: The component spec class
         """
         choices = [questionary.Choice(title=part_type.items[d].showcase_name, value=d) for d in part_type.items]
         specs_selected = questionary.checkbox("Select what parameters do you want to search by: ", choices=choices).ask()       # type: typing.List[str]
@@ -428,40 +437,53 @@ class CLI:
             return
         search_filter = []
         for s in specs_selected:
-            autocomplete_choices = self.get_autocomplete_list(s, part_type.db_type_name)
-            try:
-                inp, op = self.ask_for_spec_input_with_operator(part_type, s, autocomplete_choices)
-            except KeyboardInterrupt:
-                console.print("Canceled part lookup")
-                return
-            search_filter.append({'db_name': s, 'val': inp, 'op': op})
+            if s == 'ipn':
+                try:
+                    inp = self._ask_ipn(self.db.get_all_parts_by_keys(part_type, 'ipn'))
+                except self._HelperFunctionExitError:
+                    console.print("Canceled part lookup")
+                    return
+                op = e7epd.ComparisonOperators.equal
+            else:
+                autocomplete_choices = self.get_autocomplete_list(s, part_type.db_type_name)
+                try:
+                    inp, op = self.ask_for_spec_input_with_operator(part_type.items[s], autocomplete_choices)
+                except KeyboardInterrupt:
+                    console.print("Canceled part lookup")
+                    return
+            search_filter.append(e7epd.SpecWithOperator(key=s, val=inp, operator=op))
         try:
-            parts_list = part_db.get_sorted_parts(search_filter)
+            parts_list = self.db.get_sorted_parts(part_type, search_filter)
         except e7epd.EmptyInDatabase:
             console.print("[red]No filtered parts in the database[/]")
             return
-        self.print_parts_list(part_db, parts_list, title="All parts in %s" % part_db.table_name)
+        self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
     def print_parts(self, part_type: e7epd.spec.PartSpec = None):
         if part_type is None:
-            part_type = self.choose_component()
+            try:
+                part_type = self.choose_component()
+            except KeyboardInterrupt:
+                console.print("[red]No part chosen[/]")
+                return
         if self.db.get_number_of_parts_in_db(part_type) == 0:
             console.print("[italic red]Sorry, but there are no parts for that component[/]")
             return
-        all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=True).ask()
+        all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=True).ask(patch_stdout=False, kbi_msg="Exited option")
+        if all_parts is None:
+            return
         if all_parts:
             self.print_filtered_parts(part_type)
         else:
             self.print_all_parts(part_type)
 
-    def ask_for_spec_input_with_operator(self, part_type: e7epd.spec.PartSpec, spec_name: str, choices: list = None, operator_allowed: bool = True):
+    def ask_for_spec_input_with_operator(self, spec: e7epd.spec.SpecLineItem, choices: list = None,
+                                         operator_allowed: bool = True) -> (typing.Union[str, float, int], e7epd.ComparisonOperators):
         """
         Function that prompts the user to enter the specification (resistance, package, etc) for a part.
         This function allows nicely type inputs like 10k
 
         Args:
-            part_db: The part database to get the manufacturer part number
-                       TODO: Remove this and replace with a list option for choices
             spec: The specification that we want the user to enter
             choices: A list of choices to show allow the user to select from
             operator_allowed: Whether to allow the user to enter an operator (like >1k)
@@ -477,20 +499,19 @@ class CLI:
         #     except self._HelperFunctionExitError:
         #         raise KeyboardInterrupt()
         #     return inp
-        op = '=='
-        spec = part_type.items[spec_name]
+        op = e7epd.ComparisonOperators('==')
         while 1:
             # todo: do we need the following case handling below??
-            if spec_name == 'ipn':
-                try:
-                    inp = self._ask_ipn(self.db.get_all_parts_one_keys(part_type, 'ipn'))
-                except self._HelperFunctionExitError:
-                    raise KeyboardInterrupt()
+            # if spec_name == 'ipn':
+            #     try:
+            #         inp = self._ask_ipn(self.db.get_all_parts_one_keys(part_type, 'ipn'))
+            #     except self._HelperFunctionExitError:
+            #         raise KeyboardInterrupt()
+            # else:
+            if choices:
+                inp = questionary.autocomplete("Enter value for %s: " % spec.showcase_name, choices=choices).ask()
             else:
-                if choices:
-                    inp = questionary.autocomplete("Enter value for %s: " % spec.showcase_name, choices=choices).ask()
-                else:
-                    inp = questionary.text("Enter value for %s: " % spec.showcase_name).ask()
+                inp = questionary.text("Enter value for %s: " % spec.showcase_name).ask()
             if inp is None:
                 raise KeyboardInterrupt()
             if inp == '':
@@ -506,6 +527,7 @@ class CLI:
                 if operator_allowed:
                     if inp.startswith(tuple(['<', '<=', '>', '>='])):
                         op = re.findall(r'\>=|\>|\<=|\<', inp)[0]
+                        op = e7epd.ComparisonOperators(op)
                         inp = re.sub(r'\>=|\>|\<=|\<', "", inp)
                 if spec.shows_as == ShowAsEnum.engineering:
                     try:
@@ -538,37 +560,38 @@ class CLI:
             break
         return inp, op
 
-    def ask_for_spec_input(self, part_type: e7epd.spec.PartSpec, spec_name: str, choices: list = None):
-        inp, op = self.ask_for_spec_input_with_operator(part_type, spec_name, choices, operator_allowed=False)
+    def ask_for_spec_input(self, spec: e7epd.spec.SpecLineItem, choices: list = None):
+        inp, op = self.ask_for_spec_input_with_operator(spec, choices, operator_allowed=False)
         return inp
 
     @staticmethod
     def get_autocomplete_list(db_name: str, table_name: str) -> typing.Union[None, list]:
         # todo: improve this for table name to point to type directly
         autocomplete_choices = None
+        autofill_helpers = e7epd.spec.autofill_helpers_list
         if db_name == 'manufacturer' and table_name == 'ic':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_manufacturers']
+            autocomplete_choices = autofill_helpers['ic_manufacturers']
         if db_name == 'manufacturer' and table_name == 'resistor':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_manufacturers']
+            autocomplete_choices = autofill_helpers['passive_manufacturers']
         elif db_name == 'ic_type' and table_name == 'ic':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_types']
+            autocomplete_choices = autofill_helpers['ic_types']
         elif db_name == 'cap_type' and table_name == 'capacitor':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['capacitor_types']
+            autocomplete_choices = autofill_helpers['capacitor_types']
         elif db_name == 'diode_type' and table_name == 'diode':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['diode_type']
+            autocomplete_choices = autofill_helpers['diode_type']
         elif db_name == 'bjt_type' and table_name == 'bjt':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['bjt_types']
+            autocomplete_choices = autofill_helpers['bjt_types']
         elif db_name == 'mosfet_type' and table_name == 'mosfet':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['mosfet_types']
+            autocomplete_choices = autofill_helpers['mosfet_types']
         elif db_name == 'led_type' and table_name == 'led':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['led_types']
+            autocomplete_choices = autofill_helpers['led_types']
         elif db_name == 'fuse_type' and table_name == 'fuse':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['fuse_types']
+            autocomplete_choices = autofill_helpers['fuse_types']
         # Package Auto-Helpers
         elif db_name == 'package' and table_name == 'ic':
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['ic_packages']
+            autocomplete_choices = autofill_helpers['ic_packages']
         elif db_name == 'package' and (table_name == 'resistor' or table_name == 'capacitor' or table_name == 'inductor'):
-            autocomplete_choices = e7epd.spec.autofill_helpers_list['passive_packages']
+            autocomplete_choices = autofill_helpers['passive_packages']
         return autocomplete_choices
 
     def get_partdb_and_ipn(self, part_db: e7epd.spec.PartSpec = None, ipn_must_exist: bool = None):
@@ -579,12 +602,12 @@ class CLI:
                      manufacturer part number
             ipn_must_exist: Whether the manufacturer part number must already exist in the database
 
-        Returns: A tupple of a selected component database and the manufacturer part number
+        Returns: A tuple of a selected component database and the manufacturer part number
         """
         if part_db is None:
-            all_ipn_list = self.db.get_all_parts_one_keys(None, 'ipn')
+            all_ipn_list = self.db.get_all_parts_by_keys(None, 'ipn')
         else:
-            all_ipn_list = self.db.get_all_parts_one_keys(part_db, 'ipn')
+            all_ipn_list = self.db.get_all_parts_by_keys(part_db, 'ipn')
 
         try:
             ipn_number = self._ask_ipn(all_ipn_list, must_already_exist=ipn_must_exist)
@@ -597,18 +620,30 @@ class CLI:
 
         return part_db, ipn_number
 
+    def add_new_pcb(self):
+        new_pcb = {}
+        for spec_db_name in e7epd.spec.PCBItems:
+            if spec_db_name == 'parts':
+                new_pcb['parts'] = self._ask_for_pcb_parts()
+            else:
+                try:  # Ask the user for that property
+                    new_pcb[spec_db_name] = self.ask_for_spec_input(e7epd.spec.PCBItems[spec_db_name])
+                except KeyboardInterrupt:
+                    console.print("Did not add part")
+                    return
+        self.db.add_new_pcb(new_pcb)
+
     def add_new_part(self, part_type: e7epd.spec.PartSpec = None):
         """ Function gets called when a part is to be added """
         try:
             if part_type is None:
-                try:
-                    part_type = self.choose_component()
-                except self._ChooseComponentDigikeyBarcode as e:
-                    print(e.dk_info)
-                    console.print("[red]Digikey component for adding a part isn't supported, yet[/]")
-                    return
+                part_type = self.choose_component(True)
+            if part_type == e7epd.spec.PCBItems:
+                console.print("Adding PCB instead")
+                self.add_new_pcb()
+                return
             try:
-                ipn = self._ask_ipn(self.db.get_all_parts_one_keys(part_type, 'ipn'), must_already_exist=False)
+                ipn = self._ask_ipn(self.db.get_all_parts_by_keys(part_type, 'ipn'), must_already_exist=False)
             except self._HelperFunctionExitError as e:
                 if e.extra_data is not None:
                     if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=False).ask():
@@ -626,9 +661,9 @@ class CLI:
                         raise KeyboardInterrupt()
                 else:
                     # Select an autocomplete choice, or None if there isn't any
-                    autocomplete_choices = self.get_autocomplete_list(spec_db_name, part_type.db_type_name)
+                    autocomplete_choices = self.db.get_autocomplete_list(part_type, spec_db_name)
                     try:        # Ask the user for that property
-                        new_part[spec_db_name] = self.ask_for_spec_input(part_type, spec_db_name, autocomplete_choices)
+                        new_part[spec_db_name] = self.ask_for_spec_input(part_type.items[spec_db_name], autocomplete_choices)
                     except KeyboardInterrupt:
                         console.print("Did not add part")
                         return
@@ -840,22 +875,21 @@ class CLI:
             elif to_do == "Edit Part":
                 self.edit_part(part_db)
 
-    def choose_component(self) -> e7epd.spec.PartSpec:
+    def choose_component(self, allow_pcb: bool = False) -> typing.Union[e7epd.spec.PartSpec, dict]:
         """
         Dialog to choose which component to use.
         Returns: The component class
-        Raises _ChooseComponentDigikeyBarcode: If instead of a component by itself a Digikey barcode is scanned
         Raises KeyboardInterrupt: If a component is not chosen
         """
-        pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
-        component = questionary.select("Select the component you want do things with:", choices=list(self.db.comp_types.keys()) + [pcb_choice, self.return_formatted_choice]).ask()
+        choice = list(self.db.comp_types.keys()) + [self.return_formatted_choice]
+        if allow_pcb:
+            pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
+            choice.insert(-1, pcb_choice)
+        component = questionary.select("Select the component you want do things with:", choices=choice).ask()
         if component is None or component == 'Return':
             raise KeyboardInterrupt()
         elif component == 'PCBs':
-            # part_db = self.db.pcbs
-            # todo: this
-            raise KeyboardInterrupt()
-            pass
+            part_db = e7epd.spec.PCBItems
         else:
             part_db = self.db.comp_types[component]
         return part_db

@@ -248,9 +248,10 @@ The dictionaries in this list is formatted as follows for a component:
 ============= ============= =======================================================
 Key           Value Type    Description
 ============= ============= =======================================================
-comp_type     string        The component type (resistor, bjt, etc) which corresponds to the part's table name
+type          string        The component type (resistor, bjt, etc) which corresponds to the part's table name
 part          dict          A dictionary describing the part
 qty           int           The quantity of this part used in this board
+designator    str           The part designator on the PCB
 alternatives  list          A list of alternative parts that can be used, each part being the same format as the part key above. This list can be left as an empty array.
 ============= ============= =======================================================
 
@@ -263,7 +264,6 @@ For example, for a part with the ipn of "PART123", the part dict would be
 
     {
         ipn: 'PART123'
-        type: 'resistor'
     }
 
 As the ipn is unique to each part, this filter would only find a single part. With a resistor
@@ -271,9 +271,8 @@ for example, where a specific part does not matter, the part dict would look som
 .. code-block::
 
     {
-        type: 'resistor'
         resistance: 1000
-        power: >0.125
+        power: {val: 0.125, op: '>'}
         package: 0805
     }
 

@@ -53,7 +53,7 @@ class PartSpec:
 """
 The spec for any component. NOTE: this MUST match the parts table's keys
 """
-_BasePartItems = {
+BasePartItems = {
     'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
     'ipn': SpecLineItem('IPN', ShowAsEnum.normal, str, True),
     'mfg_part_numb': SpecLineItem('Mfg Part #', ShowAsEnum.normal, str, False),
@@ -75,7 +75,7 @@ Resistor = PartSpec(
     showcase_name='Resistor',
     table_display_order=eedata_generic_items_preitems+('resistance', 'tolerance', 'power')+eedata_generic_items_postitems,
     items={
-        **_BasePartItems,
+        **BasePartItems,
         'resistance': SpecLineItem('Resistance', ShowAsEnum.engineering, float, True, f'{UnicodeCharacters.Omega:s}'),
         'tolerance': SpecLineItem('Tolerance', ShowAsEnum.precentage, float, False),
         'power': SpecLineItem('Power Rating', ShowAsEnum.fraction, float, False),
@@ -196,7 +196,9 @@ Resistor = PartSpec(
 
 PCBItems = {
     'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
-    'ipn': SpecLineItem('IPN', ShowAsEnum.normal, str, True),
+    'id': SpecLineItem('Board ID', ShowAsEnum.normal, str, True),
+    'board name': SpecLineItem('Board Name', ShowAsEnum.normal, str, False),
+    'rev': SpecLineItem('Rev', ShowAsEnum.normal, str, True),
     'storage': SpecLineItem('Storage Location', ShowAsEnum.normal, str, False),
     'comments': SpecLineItem('Comments', ShowAsEnum.normal, str, False),
     'user': SpecLineItem('User', ShowAsEnum.normal, str, False),
