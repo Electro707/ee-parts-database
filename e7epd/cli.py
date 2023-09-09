@@ -1005,13 +1005,14 @@ class CLI:
                         self.edit_part()
                     except KeyboardInterrupt:
                         continue
-                elif to_do == 'Individual Components View':
-                    while 1:
-                        try:
-                            part_db = self.choose_component()
-                            self.component_cli(part_db)
-                        except KeyboardInterrupt:
-                            break
+                # todo: This was here when the parts were in physically separate tables. Might no longer make sense?
+                # elif to_do == 'Individual Components View':
+                #     while 1:
+                #         try:
+                #             part_db = self.choose_component()
+                #             self.component_cli(part_db)
+                #         except KeyboardInterrupt:
+                #             break
                 elif to_do == 'Database Setting':
                     self.database_settings()
                 # elif to_do == 'Digikey API Settings':     # todo: this

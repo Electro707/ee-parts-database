@@ -18,6 +18,7 @@ database_spec_rev = '0.7.0-dev'
 # if sqlalchemy.__version__ != "1.4.0":
 #     raise ImportError(f"SQLAlchemy version is not 1.4.0, but is {sqlalchemy.__version__}")
 
+
 class InputException(Exception):
     """ Exception that gets raised on any input error """
     def __init__(self, message):
@@ -50,6 +51,7 @@ class ComparisonOperators(enum.StrEnum):
     greater = '>'
     less_equal = '<='
     greater_equal = '>='
+
 
 @dataclasses.dataclass
 class SpecWithOperator:
@@ -86,7 +88,7 @@ class E7EPDConfigTable:
         else:
             return d['val']
 
-    def set(self, key: str, value: str):
+    def set(self, key: str, value: typing.Any):
         d = self.coll.find_one_and_update({'key': key}, {'$set': {'val': value}})
         if d is None:
             self.coll.insert_one({'key': key, 'val': value})
@@ -95,11 +97,16 @@ class E7EPDConfigTable:
         # This does nothing. It's mostly here for compatibility with any set-get-save class callback
         pass
 
+    def check_first_time(self):
+        if self.get('first_time') is None:
+            self.set('first_time', True)
+
     def get_db_version(self) -> typing.Union[str, None]:
         return self.get('db_ver')
 
     def store_current_db_version(self):
         self.set('db_ver', database_spec_rev)
+
 
 class E7EPD:
     def __init__(self, db_client: pymongo.MongoClient):
@@ -176,7 +183,8 @@ class E7EPD:
             pcb_data: The PCB info to add to the database
 
         Raises:
-            InputException: If the given `pcb_data` input has something invalid about it. See specific exception message as to what
+            InputException: If the given `pcb_data` input has something invalid about it.
+                            See specific exception message as to what
 
         """
         # Validate that all given keys are part of the spec, and the type matches
@@ -184,7 +192,8 @@ class E7EPD:
             if d not in spec.PCBItems.keys():
                 raise InputException(f"Given key of {d} is not part of the spec")
             if type(pcb_data[d]) not in [type(None), spec.PCBItems[d].input_type]:
-                raise InputException(f"Input value of {pcb_data[d]} for {d} is not of type {spec.PCBItems[d].input_type}. Instead is {type(pcb_data[d])}")
+                raise InputException(f"Input value of {pcb_data[d]} for {d} is not of "
+                                     f"type {spec.PCBItems[d].input_type}. Instead is {type(pcb_data[d])}")
         # Check if all required keys are matched
         for d in spec.PCBItems:
             if spec.PCBItems[d].required:
@@ -208,7 +217,8 @@ class E7EPD:
         else:
             spec_search = []
             for k in part:
-                spec_search.append(SpecWithOperator(key=k, val=part[k]['val'], operator=ComparisonOperators(part[k]['op'])))
+                spec_search.append(SpecWithOperator(key=k, val=part[k]['val'],
+                                                    operator=ComparisonOperators(part[k]['op'])))
             return self.get_sorted_parts(self.comp_types[part_type], spec_search)
 
     def add_user(self, u: spec.UserSpec):
@@ -290,12 +300,13 @@ class E7EPD:
         d = self.part_coll.find(q)
         return list(d)
 
-    def get_sorted_parts(self, part_class: typing.Union[spec.PartSpec], filter: typing.List[SpecWithOperator]) -> typing.List[dict]:
+    def get_sorted_parts(self, part_class: typing.Union[spec.PartSpec],
+                         to_filter: typing.List[SpecWithOperator]) -> typing.List[dict]:
         q = {}
         if part_class is not None:
             q['type'] = part_class.db_type_name
         # Go thru parts to filter
-        for f in filter:
+        for f in to_filter:
             if f.operator != ComparisonOperators.equal and type(f.val) is str:
                 raise InputException("Gave some comparison operator while input is a string")
             if f.key not in part_class.items:
@@ -305,7 +316,8 @@ class E7EPD:
         d = self.part_coll.find(q)
         return list(d)
 
-    def get_all_parts_by_keys(self, part_class: typing.Union[spec.PartSpec, None], ret_key: typing.Union[str, list]) -> list:
+    def get_all_parts_by_keys(self, part_class: typing.Union[spec.PartSpec, None],
+                              ret_key: typing.Union[str, list]) -> list:
         """
         Returns all parts in the database, but filtered to only return one key
         Args:
@@ -335,7 +347,8 @@ class E7EPD:
             if d not in part_class.items.keys():
                 raise InputException(f"Given key of {d} is not part of the spec")
             if type(new_part[d]) != part_class.items[d].input_type:
-                raise InputException(f"Input value of {new_part[d]} for {d} is not of type {part_class.items[d].input_type}")
+                raise InputException(f"Input value of {new_part[d]} for {d} is "
+                                     f"not of type {part_class.items[d].input_type}")
         # Set type
         new_part['type'] = part_class.db_type_name
         # Check if all required keys are matched
@@ -357,7 +370,8 @@ class E7EPD:
         Updates a part with a certain type and IPN with some new values given as a dictionary
 
         Args:
-            part_class: The part class to update. If given as None, then type checking on new_values is not done (thus recommended!!)
+            part_class: The part class to update. If given as None, then type checking on
+                        new_values is not done (thus recommended!!)
             ipn: The IPN of the part to update
             new_values: The new dictionary key-values to update the part with
         """
@@ -370,7 +384,8 @@ class E7EPD:
                 try:
                     part_class.items[d].input_type(new_values[d])
                 except ValueError:
-                    raise InputException(f"Input value of {new_values[d]} for {d} is not of type {part_class.items[d].input_type}")
+                    raise InputException(f"Input value of {new_values[d]} for {d} is not "
+                                         f"of type {part_class.items[d].input_type}")
         self.log.debug(f"Updating {q} with {new_values}")
         self.part_coll.find_one_and_update(q, {"$set": new_values})
 
