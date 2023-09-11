@@ -794,53 +794,50 @@ class CLI:
             return
 
     def print_pcb_and_component_availability(self):
-        all_boards = self.db.pcbs.get_all_boardnames()
+        all_boards = self.db.get_all_unique_pcbs()
         if len(all_boards) == 0:
             console.print("There are no PCBs in the database")
             return
-        board_name = questionary.autocomplete("Enter the PCB name: ", choices=all_boards).ask()
+        all_boards = {f"{i['id']} Rev {i['rev']}": (i['id'], i['rev']) for i in all_boards}
+        all_board_name = list(all_boards.keys())
+        all_board_name.sort()
+        board_name = questionary.autocomplete("Enter the PCB name: ", choices=all_board_name).ask()
         if board_name is None:
             console.print("No board is given")
             return
-        if board_name not in all_boards:
-            console.print("A board not in the database was given")
-            return
-        rev = questionary.autocomplete("Enter the PCB revision: ", choices=self.db.pcbs.get_revision_per_boardname(board_name)).ask()
 
-        try:
-            board = self.db.pcbs.get_by_boardname_and_rev(board_name, rev)
-        except sqlalchemy.exc.NoResultFound:
-            console.print("[red]No board found for the given name and revision[/]")
-            return
+        board = self.db.get_pcb(all_boards[board_name][0], all_boards[board_name][1])
 
         all_parts_in_board = []
-        for board_part in board.parts:
-            part_db_name, part_db = self.db.get_component_by_table_name(board_part['comp_type'])
-            part_description = ""
-            if 'mfr_part_numb' in board_part['part']:
-                part_description = board_part['part']['mfr_part_numb']
-                try:
-                    parts_in_db = [part_db.get_part_by_mfr_part_numb(board_part['part']['mfr_part_numb'])]
-                except sqlalchemy.exc.NoResultFound:
-                    parts_in_db = []
-            else:
-                search_query = []
-                if board_part['comp_type'] == 'resistance':
-                    part_description = self.db.resistors.print_formatted_from_spec(board_part['part'])
-                for sc in board_part['part']:
-                    if type(board_part['part'][sc]) is dict:
-                        search_query.append({'db_name': sc, 'val': board_part['part'][sc]['val'], 'op': board_part['part'][sc]['op']})
-                    else:
-                        search_query.append({'db_name': sc, 'val': board_part['part'][sc]})
-                parts_in_db = part_db.get_sorted_parts(search_query)
-            if len(parts_in_db) == 0:
-                all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, '-', '0', '-'], 's'))
-            for p in parts_in_db:
-                all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, p.mfr_part_numb, str(p.stock), p.storage], None))
+        for board_part in board['part']:
+            parts = self.db.find_pcb_part(board_part)
+            # todo: this
+            # part_db_name, part_db = self.db.find_pcb_part(board_part)
+            # part_description = ""
+            # if 'mfr_part_numb' in board_part['part']:
+            #     part_description = board_part['part']['mfr_part_numb']
+            #     try:
+            #         parts_in_db = [part_db.get_part_by_mfr_part_numb(board_part['part']['mfr_part_numb'])]
+            #     except sqlalchemy.exc.NoResultFound:
+            #         parts_in_db = []
+            # else:
+            #     search_query = []
+            #     if board_part['comp_type'] == 'resistance':
+            #         part_description = self.db.resistors.print_formatted_from_spec(board_part['part'])
+            #     for sc in board_part['part']:
+            #         if type(board_part['part'][sc]) is dict:
+            #             search_query.append({'db_name': sc, 'val': board_part['part'][sc]['val'], 'op': board_part['part'][sc]['op']})
+            #         else:
+            #             search_query.append({'db_name': sc, 'val': board_part['part'][sc]})
+            #     parts_in_db = part_db.get_sorted_parts(search_query)
+            # if len(parts_in_db) == 0:
+            #     all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, '-', '0', '-'], 's'))
+            # for p in parts_in_db:
+            #     all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, p.mfr_part_numb, str(p.stock), p.storage], None))
 
-        console.print("You currently have {:d} PCBs available".format(board.stock))
+        console.print("You currently have {:d} PCBs available".format(board['stock']))
 
-        ta = rich.table.Table(title='All components for {} Rev {}'.format(board_name, rev))
+        ta = rich.table.Table(title='All components for {} Rev {}'.format(board['board name'], board['rev']))
         ta.add_column("Stock Required")
         ta.add_column("Reference")
         ta.add_column("Description")
@@ -980,8 +977,7 @@ class CLI:
                 elif to_do == 'Exit':
                     break
                 elif to_do == 'Check components for PCB':
-                    # todo: this
-                    # self.print_pcb_and_component_availability()
+                    self.print_pcb_and_component_availability()
                     continue
                 elif to_do == 'Search Part':
                     self.print_parts()

@@ -194,20 +194,28 @@ class E7EPD:
             if type(pcb_data[d]) not in [type(None), spec.PCBItems[d].input_type]:
                 raise InputException(f"Input value of {pcb_data[d]} for {d} is not of "
                                      f"type {spec.PCBItems[d].input_type}. Instead is {type(pcb_data[d])}")
+        # todo: add verification of parts
         # Check if all required keys are matched
         for d in spec.PCBItems:
             if spec.PCBItems[d].required:
                 if d not in pcb_data:
                     raise InputException(f"Required key of {d} is not found in the new part dict")
         # Check for any duplicates
-        if self.pcb_coll.count_documents({'id': pcb_data['id']}) != 0:
+        if self.pcb_coll.count_documents({'id': pcb_data['id'], 'rev': pcb_data['rev']}) != 0:
             raise InputException("PCB ID already exists in the database")
         # Add part to DB
         self.pcb_coll.insert_one(pcb_data)
 
-    def get_pcb(self, pcb_id: str) -> dict:
-        doc = self.pcb_coll.find_one({'id': pcb_id})
+    def get_pcb(self, pcb_id: str = None, rev: str = None) -> dict:
+        doc = self.pcb_coll.find_one({'id': pcb_id, 'rev': rev})
         return doc
+
+    def get_all_unique_pcbs(self) -> typing.List[typing.Dict]:
+        ret = []
+        q = self.pcb_coll.find()
+        for i in q:
+            ret.append({'id': i['id'], 'rev': i['rev']})
+        return ret
 
     def find_pcb_part(self, part: dict) -> typing.Union[None, typing.List[dict]]:
         part_type = part['type']
@@ -485,6 +493,8 @@ class E7EPD:
         #     result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
         # with open(new_db_file, 'x') as f:
         #     json.dump(result, f, indent=4)
+
+    def check_requirements(self, ):
 
 
 def print_formatted_from_spec(part_class: spec.PartSpec, part_data: dict) -> typing.Union[None, str]:

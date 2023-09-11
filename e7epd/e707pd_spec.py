@@ -204,7 +204,13 @@ PCBItems = {
     'user': SpecLineItem('User', ShowAsEnum.normal, str, False),
     'parts': SpecLineItem('Parts', ShowAsEnum.custom, list, True)
 }
-
+PCBPartsItems = {
+    'type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+    'part': SpecLineItem('Part', ShowAsEnum.normal, str, True),
+    'qty': SpecLineItem('Type', ShowAsEnum.normal, int, True),
+    'designator': SpecLineItem('Designator', ShowAsEnum.normal, str, True),
+    'alternatives': SpecLineItem('Alternative', ShowAsEnum.normal, int, False),
+}
 
 """
     While not part of the spec, but these are handly for autofills
