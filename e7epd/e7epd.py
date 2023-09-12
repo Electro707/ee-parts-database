@@ -197,9 +197,10 @@ class E7EPD:
         # todo: add verification of parts
         # Check if all required keys are matched
         for d in spec.PCBItems:
-            if spec.PCBItems[d].required:
-                if d not in pcb_data:
-                    raise InputException(f"Required key of {d} is not found in the new part dict")
+            self._check_spec_required(d, spec.PCBItems[d], pcb_data)
+            # if spec.PCBItems[d].required:
+            #     if d not in pcb_data:
+            #         raise InputException(f"Required key of {d} is not found in the new part dict")
         # Check for any duplicates
         if self.pcb_coll.count_documents({'id': pcb_data['id'], 'rev': pcb_data['rev']}) != 0:
             raise InputException("PCB ID already exists in the database")
@@ -221,13 +222,16 @@ class E7EPD:
         part_type = part['type']
         part = part['part']
         if 'ipn' in part:
-            return [self.get_part_by_ipn(part['ipn'])]
+            p = self.get_part_by_ipn(part['ipn'])
+            if p is not None:
+                return [p]
         else:
             spec_search = []
             for k in part:
                 spec_search.append(SpecWithOperator(key=k, val=part[k]['val'],
                                                     operator=ComparisonOperators(part[k]['op'])))
             return self.get_sorted_parts(self.comp_types[part_type], spec_search)
+        return []
 
     def add_user(self, u: spec.UserSpec):
         # Do a check to ensure the same name does not exist
@@ -361,9 +365,10 @@ class E7EPD:
         new_part['type'] = part_class.db_type_name
         # Check if all required keys are matched
         for d in part_class.items:
-            if part_class.items[d].required:
-                if d not in new_part:
-                    raise InputException(f"Required key of {d} is not found in the new part dict")
+            self._check_spec_required(d, part_class.items[d], new_part)
+            # if part_class.items[d].required:
+            #     if d not in new_part:
+            #         raise InputException(f"Required key of {d} is not found in the new part dict")
         # Add part to DB
         self.log.debug(f"Writing to database: {new_part}")
         self.part_coll.insert_one(new_part)
@@ -494,7 +499,11 @@ class E7EPD:
         # with open(new_db_file, 'x') as f:
         #     json.dump(result, f, indent=4)
 
-    def check_requirements(self, ):
+    @staticmethod
+    def _check_spec_required(spec_k: str, spec_i: spec.SpecLineItem, part_dict: dict):
+        if spec_i.required:
+            if spec_k not in part_dict:
+                raise InputException(f"Required key of {d} is not found in the new part dict")
 
 
 def print_formatted_from_spec(part_class: spec.PartSpec, part_data: dict) -> typing.Union[None, str]:

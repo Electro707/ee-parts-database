@@ -802,38 +802,23 @@ class CLI:
         all_board_name = list(all_boards.keys())
         all_board_name.sort()
         board_name = questionary.autocomplete("Enter the PCB name: ", choices=all_board_name).ask()
-        if board_name is None:
+        if board_name == '':
             console.print("No board is given")
             return
 
         board = self.db.get_pcb(all_boards[board_name][0], all_boards[board_name][1])
 
-        all_parts_in_board = []
-        for board_part in board['part']:
+        all_parts_in_board = []         # type: typing.List[tuple]
+        for board_part in board['parts']:
             parts = self.db.find_pcb_part(board_part)
-            # todo: this
-            # part_db_name, part_db = self.db.find_pcb_part(board_part)
-            # part_description = ""
-            # if 'mfr_part_numb' in board_part['part']:
-            #     part_description = board_part['part']['mfr_part_numb']
-            #     try:
-            #         parts_in_db = [part_db.get_part_by_mfr_part_numb(board_part['part']['mfr_part_numb'])]
-            #     except sqlalchemy.exc.NoResultFound:
-            #         parts_in_db = []
-            # else:
-            #     search_query = []
-            #     if board_part['comp_type'] == 'resistance':
-            #         part_description = self.db.resistors.print_formatted_from_spec(board_part['part'])
-            #     for sc in board_part['part']:
-            #         if type(board_part['part'][sc]) is dict:
-            #             search_query.append({'db_name': sc, 'val': board_part['part'][sc]['val'], 'op': board_part['part'][sc]['op']})
-            #         else:
-            #             search_query.append({'db_name': sc, 'val': board_part['part'][sc]})
-            #     parts_in_db = part_db.get_sorted_parts(search_query)
-            # if len(parts_in_db) == 0:
-            #     all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, '-', '0', '-'], 's'))
-            # for p in parts_in_db:
-            #     all_parts_in_board.append(([str(board_part['quantity']), board_part['reference'], part_description, part_db_name, p.mfr_part_numb, str(p.stock), p.storage], None))
+            if len(parts) == 0:
+                all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', '-', '-', '-', '-'], 'red'))
+            elif len(parts) == 1:
+                part = parts[0]
+                all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], None))
+            else:
+                for part in parts:
+                    all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], 'orange'))
 
         console.print("You currently have {:d} PCBs available".format(board['stock']))
 
@@ -842,7 +827,7 @@ class CLI:
         ta.add_column("Reference")
         ta.add_column("Description")
         ta.add_column("Component Type")
-        ta.add_column("Available Mfr Part #")
+        ta.add_column("Available IPN#")
         ta.add_column("Stock Available")
         ta.add_column("Component Location")
         for parts_in_db in all_parts_in_board:
