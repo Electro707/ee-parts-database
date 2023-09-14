@@ -82,46 +82,56 @@ Resistor = PartSpec(
     }
 )
 
+Capacitor = PartSpec(
+    db_type_name='capacitor',
+    showcase_name='Capacitor',
+    table_display_order=eedata_generic_items_preitems+('capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'capacitance': SpecLineItem('capacitance', ShowAsEnum.engineering, float, True, f'F'),
+        'tolerance': SpecLineItem('Tolerance', ShowAsEnum.precentage, float, False),
+        'max_voltage': SpecLineItem('Voltage Rating', ShowAsEnum.normal, float, False, 'V'),
+        'temp_coeff': SpecLineItem('Temp Coeff', ShowAsEnum.normal, str, False),
+        'cap_type': SpecLineItem('Cap Type', ShowAsEnum.normal, str, False),
+    }
+)
+
+IC = PartSpec(
+    db_type_name='ic',
+    showcase_name='IC',
+    table_display_order=eedata_generic_items_preitems+('ic_type', )+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'ic_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+    }
+)
+
+Inductor = PartSpec(
+    db_type_name='inductor',
+    showcase_name='Inductor',
+    table_display_order=eedata_generic_items_preitems+('inductance', 'tolerance', 'max_current')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'inductance': SpecLineItem('Inductance', ShowAsEnum.engineering, float, True, f'H'),
+        'tolerance': SpecLineItem('Tolerance', ShowAsEnum.precentage, float, False),
+        'max_current': SpecLineItem('Current Rating', ShowAsEnum.engineering, float, False, 'A'),
+    }
+)
+
+Diode = PartSpec(
+    db_type_name='diode',
+    showcase_name='Diode',
+    table_display_order=eedata_generic_items_preitems+('diode_type', 'max_current', 'average_current', 'max_rv')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'diode_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+        'max_current': SpecLineItem('Peak Current', ShowAsEnum.engineering, float, False, 'A'),
+        'average_current': SpecLineItem('Average Current', ShowAsEnum.engineering, float, False, 'A'),
+        'max_rv': SpecLineItem('Max Vrf', ShowAsEnum.engineering, float, False, 'V'),
+    }
+)
+
 # todo
-# @dataclasses.dataclass
-# class Capacitor(GenericPartClass):
-#     capacitance: float = field(default=None, metadata=asdict(SpecLineItem('capacitance', 'Capacitance', ShowAsEnum.engineering, float, True, f'F')))
-#     tolerance: float = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
-#     max_voltage: float = field(default=None, metadata=asdict(SpecLineItem('max_voltage', 'Voltage Rating', ShowAsEnum.normal, float, False, 'V')))
-#     temp_coeff: float = field(default=None, metadata=asdict(SpecLineItem('temp_coeff', 'Temperature Coefficient', ShowAsEnum.normal, str, False)))
-#     cap_type: str = field(default=None, metadata=asdict(SpecLineItem('cap_type', 'Capacitor Type', ShowAsEnum.normal, str, False)))
-#
-#     db_name = 'capacitor'
-#     table_item_display_order = eedata_generic_items_preitems+('capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff')+eedata_generic_items_postitems
-#
-# @dataclasses.dataclass
-# class IC(GenericPartClass):
-#     ic_type: str = field(default=None, metadata=asdict(SpecLineItem('ic_type', 'IC Type', ShowAsEnum.normal, str, True)))
-#
-#     db_name = 'ic'
-#     table_item_display_order = eedata_generic_items_preitems+['ic_type']+eedata_generic_items_postitems
-#
-#
-# @dataclasses.dataclass
-# class Inductor(GenericPartClass):
-#     inductance: str = field(default=None, metadata=asdict(SpecLineItem('inductance', 'Inductance', ShowAsEnum.engineering, float, True, f'H')))
-#     tolerance: str = field(default=None, metadata=asdict(SpecLineItem('tolerance', 'Tolerance', ShowAsEnum.precentage, float, False)))
-#     max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Max Current', ShowAsEnum.engineering, float, False)))
-#
-#     db_name = 'inductor'
-#     table_item_display_order = eedata_generic_items_preitems+['inductance', 'tolerance', 'max_current']+eedata_generic_items_postitems
-#
-#
-# @dataclasses.dataclass
-# class Diode(GenericPartClass):
-#     diode_type: str = field(default=None, metadata=asdict(SpecLineItem('diode_type', 'Diode Type', ShowAsEnum.normal, str, True)))
-#     max_current: str = field(default=None, metadata=asdict(SpecLineItem('max_current', 'Peak Current', ShowAsEnum.engineering, float, False)))
-#     average_current: str = field(default=None, metadata=asdict(SpecLineItem('average_current', 'Average Current', ShowAsEnum.engineering, float, False)))
-#     max_rv: str = field(default=None, metadata=asdict(SpecLineItem('max_rv', 'Max Reverse Voltage', ShowAsEnum.engineering, float, False)))
-#
-#     db_name = 'diode'
-#     table_item_display_order = eedata_generic_items_preitems+('diode_type', 'max_rv', 'average_current', 'max_current')+eedata_generic_items_postitems
-#
 # @dataclasses.dataclass
 # class Crystal(GenericPartClass):
 #     frequency: str = field(default=None, metadata=asdict(SpecLineItem('frequency', 'Frequency', ShowAsEnum.engineering, float, True, 'Hz')))
@@ -238,6 +248,7 @@ autofill_helpers_list = {
 """
 if __name__ == '__main__':
     print("Running Test")
+    # todo: this
     # spec_and_disp_arr = [['resistor', eedata_resistors_params, eedata_resistor_display_order, Resistor],
     #                      ['capacitor', eedata_capacitor_params, eedata_capacitor_display_order, Capacitor],
     #                      ['ic', eedata_ic_spec, eedata_ic_display_order, IC],

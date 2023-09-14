@@ -863,7 +863,7 @@ class CLI:
         Returns: The component class
         Raises KeyboardInterrupt: If a component is not chosen
         """
-        choice = list(self.db.comp_types.keys()) + [self.return_formatted_choice]
+        choice = [questionary.Choice(title=i.showcase_name, value=i) for i in self.db.comp_types] + [self.return_formatted_choice]
         if allow_pcb:
             pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
             choice.insert(-1, pcb_choice)
@@ -873,7 +873,7 @@ class CLI:
         elif component == 'PCBs':
             part_db = e7epd.spec.PCBItems
         else:
-            part_db = self.db.comp_types[component]
+            part_db = component
         return part_db
 
     def wipe_database(self):
@@ -920,8 +920,9 @@ class CLI:
                 t = self.conf.get_database_connection_info(db_name)
                 if t['type'] == 'local':
                     console.print("This is a SQLite3 server, where the file path is {}".format(t['filename']))
-                elif t['type'] == 'mysql_server':
-                    console.print("This is a mySQL server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t))
+                elif t['type'] == 'mongodb':
+                    # todo: special print if auth is not enable or not
+                    console.print("This is a mySQL server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t, db_name=db_name))
 
     # todo: this
     # def digikey_api_settings_menu(self):
@@ -955,7 +956,7 @@ class CLI:
         try:
             while 1:
                 to_do = questionary.select("Select the component you want do things with:",
-                                           choices=['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part', 'Individual Components View',
+                                           choices=['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
                                                     'Database Setting', 'Digikey API Settings', 'Exit'], use_shortcuts=True).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()

@@ -123,9 +123,12 @@ class E7EPD:
         self.users_coll = self.db['user']
 
         # Constructor for available part types:
-        self.comp_types = {     # type: typing.Dict[str, spec.PartSpec]
-            'resistor': spec.Resistor,
-        }
+        self.comp_types = [     # type: typing.List[spec.PartSpec]
+            spec.Resistor,
+            spec.Capacitor,
+            spec.IC,
+            spec.Inductor,
+        ]
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
@@ -230,7 +233,7 @@ class E7EPD:
             for k in part:
                 spec_search.append(SpecWithOperator(key=k, val=part[k]['val'],
                                                     operator=ComparisonOperators(part[k]['op'])))
-            return self.get_sorted_parts(self.comp_types[part_type], spec_search)
+            return self.get_sorted_parts(self.get_part_spec_by_db_name(part_type), spec_search)
         return []
 
     def add_user(self, u: spec.UserSpec):
@@ -415,8 +418,8 @@ class E7EPD:
 
     def get_part_spec_by_db_name(self, db_name: str):
         for i in self.comp_types:
-            if db_name == self.comp_types[i].db_type_name:
-                return self.comp_types[i]
+            if db_name == i.db_type_name:
+                return i
         raise InputException(f"Cannot find part type from db_name of {db_name}")
 
     def wipe_database(self):
