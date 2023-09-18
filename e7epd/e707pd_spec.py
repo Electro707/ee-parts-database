@@ -131,78 +131,108 @@ Diode = PartSpec(
     }
 )
 
-# todo
-# @dataclasses.dataclass
-# class Crystal(GenericPartClass):
-#     frequency: str = field(default=None, metadata=asdict(SpecLineItem('frequency', 'Frequency', ShowAsEnum.engineering, float, True, 'Hz')))
-#     load_c: str = field(default=None, metadata=asdict(SpecLineItem('load_c', 'Load Capacitance', ShowAsEnum.engineering, float, False, 'F')))
-#     esr: str = field(default=None, metadata=asdict(SpecLineItem('esr', 'ESR', ShowAsEnum.engineering, float, False, f'{UnicodeCharacters.Omega}')))
-#     stability_ppm: str = field(default=None, metadata=asdict(SpecLineItem('stability_ppm', 'Stability', ShowAsEnum.normal, float, False, 'ppm')))
-#
-#     db_name = 'crystal'
-#     table_item_display_order = eedata_generic_items_preitems+('frequency', 'load_c', 'esr', 'stability_ppm')+eedata_generic_items_postitems
+Crystal = PartSpec(
+    db_type_name='crystal',
+    showcase_name='Crystal',
+    table_display_order=eedata_generic_items_preitems+('frequency', 'load_c', 'esr', 'stability')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'frequency': SpecLineItem('Frequency', ShowAsEnum.engineering, float, True, 'Hz'),
+        'load_c': SpecLineItem('Load Capacitance', ShowAsEnum.engineering, float, False, 'F'),
+        'esr': SpecLineItem('ESR', ShowAsEnum.engineering, float, False, f'{UnicodeCharacters.Omega:s}'),
+        'stability': SpecLineItem('Stability', ShowAsEnum.engineering, float, False, 'ppm'),
+    }
+)
 
-# todo: add
-# eedata_mosfet_params = eedata_generic_spec + [
-#     {'db_name': 'mosfet_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-#     {'db_name': 'vdss', 'showcase_name': 'Max Drain-Source Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'vgss', 'showcase_name': 'Max Gate-Source Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'vgs_th', 'showcase_name': 'Gate-Source Threshold Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'i_d', 'showcase_name': 'Max Drain Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'i_d_pulse', 'showcase_name': 'Max Drain Peak Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-# ]
-# eedata_mosfet_display_order = eedata_generic_items_preitems+['mosfet_type', 'vdss', 'vgss', 'vgs_th', 'i_d', 'i_d_pulse']+eedata_generic_items_postitems
-#
-# eedata_bjt_params = eedata_generic_spec + [
-#     {'db_name': 'bjt_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-#     {'db_name': 'vcbo', 'showcase_name': 'Max Collector-Base Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'vceo', 'showcase_name': 'Max Collector-Emitter Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'vebo', 'showcase_name': 'Max Emitter-Base Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'i_c', 'showcase_name': 'Max Cont. Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'i_c_peak', 'showcase_name': 'Max Peak Collector Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-# ]
-# eedata_bjt_display_order = eedata_generic_items_preitems+['bjt_type', 'vcbo', 'vceo', 'vebo', 'i_c', 'i_c_peak']+eedata_generic_items_postitems
-#
-# eedata_connector_params = eedata_generic_spec + [
-#     {'db_name': 'conn_type', 'showcase_name': 'Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-# ]
-# eedata_connector_display_order = eedata_generic_items_preitems+['conn_type']+eedata_generic_items_postitems
-#
-# eedata_led_params = eedata_generic_spec + [
-#     {'db_name': 'led_type', 'showcase_name': 'LED Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-#     {'db_name': 'vf', 'showcase_name': 'LED forward voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-# ]
-# eedata_led_display_order = eedata_generic_items_preitems+['led_type', 'vf', 'max_i']+eedata_generic_items_postitems
-#
-# eedata_fuse_params = eedata_generic_spec + [
-#     {'db_name': 'fuse_type', 'showcase_name': 'Fuse Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-#     {'db_name': 'max_v', 'showcase_name': 'Fuse Max Voltage', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'max_i', 'showcase_name': 'Max Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'trip_i', 'showcase_name': 'Trip Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'hold_i', 'showcase_name': 'Hold Current', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-# ]
-# eedata_fuse_display_order = eedata_generic_items_preitems+['fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i']+eedata_generic_items_postitems
-#
-# eedata_button_params = eedata_generic_spec + [
-#     {'db_name': 'bt_type', 'showcase_name': 'Button Type', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
-#     {'db_name': 'circuit_t', 'showcase_name': 'Button Circuit', 'shows_as': 'normal', 'input_type': 'str', 'required': False},
-#     {'db_name': 'max_v', 'showcase_name': 'Voltage Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-#     {'db_name': 'max_i', 'showcase_name': 'Current Rating', 'shows_as': 'engineering', 'input_type': 'float', 'required': False, },
-# ]
-# eedata_button_display_order = eedata_generic_items_preitems+['bt_type', 'circuit_t', 'max_v', 'max_i']+eedata_generic_items_postitems
-#
-# eedata_misc_spec = eedata_generic_spec
-# eedata_misc_display_order = eedata_generic_items_preitems+eedata_generic_items_postitems
-#
-# eedata_pcb_params = [
-#     {'db_name': 'stock', 'showcase_name': 'Stock', 'shows_as': 'normal', 'input_type': 'int', 'required': True, },
-#     {'db_name': 'rev', 'showcase_name': 'Revision', 'shows_as': 'normal', 'input_type': 'str', 'required': True, },
-#     {'db_name': 'comments', 'showcase_name': 'Comments', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-#     {'db_name': 'storage', 'showcase_name': 'Storage Location', 'shows_as': 'normal', 'input_type': 'str', 'required': False, },
-#     {'db_name': 'board_name', 'showcase_name': 'Board Name', 'shows_as': 'normal', 'input_type': 'str', 'required': True},
-# ]
-# eedata_pcb_display_order = ['stock', 'board_name', 'rev', 'parts', 'storage', 'comments']
+FET = PartSpec(
+    db_type_name='fet',
+    showcase_name='FET',
+    table_display_order=eedata_generic_items_preitems+('mosfet_type', 'vds', 'vgs', 'vgs_th', 'i_d', 'i_d_pulse')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'mosfet_type': SpecLineItem('FET Type', ShowAsEnum.normal, str, True),
+        'vds': SpecLineItem('Max Vds', ShowAsEnum.engineering, float, False, 'V'),
+        'vgs': SpecLineItem('Max Vgs', ShowAsEnum.engineering, float, False, 'V'),
+        'vgs_th': SpecLineItem('Vgs Threshold', ShowAsEnum.engineering, float, False, 'V'),
+        'i_d': SpecLineItem('Drain Current', ShowAsEnum.engineering, float, False, 'A'),
+        'i_d_pulse': SpecLineItem('Peak Drain Current', ShowAsEnum.engineering, float, False, 'A'),
+    }
+)
+
+BJT = PartSpec(
+    db_type_name='bjt',
+    showcase_name='BJT',
+    table_display_order=eedata_generic_items_preitems+('bjt_type', 'vcb', 'vce', 'veb', 'i_c', 'i_c_peak')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'bjt_type': SpecLineItem('BJT Type', ShowAsEnum.normal, str, True),
+        'vcb': SpecLineItem('Max Collector-Base Voltage', ShowAsEnum.engineering, float, False, 'V'),
+        'vce': SpecLineItem('Max Collector-Emitter Voltage', ShowAsEnum.engineering, float, False, 'V'),
+        'veb': SpecLineItem('Max Emitter-Base Voltage', ShowAsEnum.engineering, float, False, 'V'),
+        'i_c': SpecLineItem('Collector Current', ShowAsEnum.engineering, float, False, 'A'),
+        'i_c_peak': SpecLineItem('Peak Collector Current', ShowAsEnum.engineering, float, False, 'A'),
+    }
+)
+
+Connector = PartSpec(
+    db_type_name='conn',
+    showcase_name='Connector',
+    table_display_order=eedata_generic_items_preitems+('conn_type', )+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'conn_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+    }
+)
+
+
+LED = PartSpec(
+    db_type_name='led',
+    showcase_name='LED',
+    table_display_order=eedata_generic_items_preitems+('led_type', 'color', 'vf', 'max_i')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'led_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+        'color': SpecLineItem('Color', ShowAsEnum.normal, str, False),
+        'vf': SpecLineItem('Forward Voltage', ShowAsEnum.engineering, float, False, 'V'),
+        'max_i': SpecLineItem('Max Current', ShowAsEnum.engineering, float, False, 'A'),
+    }
+)
+
+Fuse = PartSpec(
+    db_type_name='fuse',
+    showcase_name='Fuse',
+    table_display_order=eedata_generic_items_preitems+('fuse_type', 'max_v', 'trip_i', 'hold_i', 'max_i')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'fuse_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+        'max_v': SpecLineItem('Max Voltage', ShowAsEnum.engineering, float, False, 'V'),
+        'max_i': SpecLineItem('Max Current', ShowAsEnum.engineering, float, False, 'A'),
+        'trip_i': SpecLineItem('Trip Current', ShowAsEnum.engineering, float, False, 'A'),
+        'hold_i': SpecLineItem('Hold Current', ShowAsEnum.engineering, float, False, 'A'),
+    }
+)
+
+Buttons = PartSpec(
+    db_type_name='sw_bw',
+    showcase_name='Switch/Buttons',
+    table_display_order=eedata_generic_items_preitems+('bt_type', 'circuit_t', 'max_v', 'max_i')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'bt_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+        'circuit_t': SpecLineItem('Button Circuit', ShowAsEnum.normal, str, False),
+        'max_v': SpecLineItem('Max Voltage', ShowAsEnum.engineering, float, False, 'V'),
+        'max_i': SpecLineItem('Max Current', ShowAsEnum.engineering, float, False, 'A'),
+    }
+)
+
+Misc = PartSpec(
+    db_type_name='misc',
+    showcase_name='Misc',
+    table_display_order=eedata_generic_items_preitems+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+    }
+)
 
 PCBItems = {
     'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
@@ -248,26 +278,10 @@ autofill_helpers_list = {
 """
 if __name__ == '__main__':
     print("Running Test")
-    # todo: this
-    # spec_and_disp_arr = [['resistor', eedata_resistors_params, eedata_resistor_display_order, Resistor],
-    #                      ['capacitor', eedata_capacitor_params, eedata_capacitor_display_order, Capacitor],
-    #                      ['ic', eedata_ic_spec, eedata_ic_display_order, IC],
-    #                      ['inductor', eedata_inductor_spec, eedata_inductor_display_order, Inductor],
-    #                      ['diode', eedata_diode_spec, eedata_diode_display_order, Diode],
-    #                      ['pcb', eedata_pcb_spec, eedata_pcb_display_order, PCB],
-    #                      ['crystal', eedata_crystal_spec, eedata_crystal_display_order, Crystal],
-    #                      ['mosfet', eedata_mosfet_spec, eedata_mosfet_display_order, MOSFET],
-    #                      ['bjt', eedata_bjt_spec, eedata_bjt_display_order, BJT],
-    #                      ['connectors', eedata_connector_spec, eedata_connector_display_order, Connector],
-    #                      ['led', eedata_led_spec, eedata_led_display_order, LED],
-    #                      ['fuse', eedata_fuse_spec, eedata_fuse_display_order, Fuse],
-    #                      ['button', eedata_button_spec, eedata_button_display_order, Button],
-    #                      ['misc', eedata_misc_spec, eedata_misc_display_order, MiscComp]]
-    # for spec in spec_and_disp_arr:
-    #     for i in spec[1]:
-    #         if i['db_name'] not in spec[2]:
-    #             raise AssertionError("Spec '{}' not in {}".format(i['db_name'], spec[0]))
-    #
-    #         if not hasattr(spec[3], i['db_name']):
-    #             raise AssertionError("Extra name in spec dict for {} = {}".format(spec[0], i['db_name']))
+    from e7epd import E7EPD
+    all_comp_type = E7EPD.comp_types
+    for c in all_comp_type:
+        for t in c.table_display_order:
+            if t not in c.items:
+                raise AssertionError(f"Spec '{t}' not in {c.showcase_name}")
     print("Done with test")

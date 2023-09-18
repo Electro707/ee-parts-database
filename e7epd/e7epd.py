@@ -109,6 +109,23 @@ class E7EPDConfigTable:
 
 
 class E7EPD:
+    # Constructor for available part types:
+    comp_types = [  # type: typing.List[spec.PartSpec]
+        spec.Resistor,
+        spec.Capacitor,
+        spec.IC,
+        spec.Inductor,
+        spec.Diode,
+        spec.FET,
+        spec.BJT,
+        spec.Connector,
+        spec.LED,
+        spec.Fuse,
+        spec.Crystal,
+        spec.Buttons,
+        spec.Misc,
+    ]
+
     def __init__(self, db_client: pymongo.MongoClient):
         self.log = logging.getLogger('E7EPD')
         self.db_client = db_client              # Store the connection engine
@@ -121,14 +138,6 @@ class E7EPD:
         self.part_coll = self.db['parts']
         self.pcb_coll = self.db['pcbs']
         self.users_coll = self.db['user']
-
-        # Constructor for available part types:
-        self.comp_types = [     # type: typing.List[spec.PartSpec]
-            spec.Resistor,
-            spec.Capacitor,
-            spec.IC,
-            spec.Inductor,
-        ]
 
         # If the DB version is None (if the config table was just created), then populate the current version
         if self.config.get_db_version() is None:
