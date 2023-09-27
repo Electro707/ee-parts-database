@@ -7,6 +7,7 @@ import dataclasses
 # External Modules Import
 import subprocess
 import logging
+import logging.handlers
 import importlib
 import rich
 import rich.console
@@ -19,6 +20,7 @@ from engineering_notation import EngNumber
 import questionary
 import prompt_toolkit
 import prompt_toolkit.formatted_text
+from prompt_toolkit.formatted_text import to_formatted_text, HTML
 import os
 import sys
 import typing
@@ -29,9 +31,11 @@ import pkg_resources
 import re
 import warnings
 import argparse
+import tempfile
 # Local Modules Import
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
+from e7epd import migration
 # Import of my fork of the digikey_api package
 try:
     from e707_digikey.v3.api import DigikeyAPI
@@ -78,6 +82,9 @@ class CLIConfig:
         def __init__(self):
             super().__init__("Error connection with database")
 
+    class DatabaseDeprecatedException(Exception):
+        pass
+
     def __init__(self):
         self.log = logging.getLogger('CLIConfig')
         if not pkg_resources.resource_isdir(__name__, 'data'):
@@ -94,6 +101,15 @@ class CLIConfig:
 
     @CLIConfig_config_db_list_checker
     def get_database_connection(self, database_name: str = None) -> pymongo.MongoClient:
+        """
+        Gets a database connection based off the database name.
+
+        Args:
+            database_name:
+
+        Returns:
+
+        """
         # todo: add JSON file compatibility
         if database_name is None:
             database_name = self.config.last_db
@@ -106,12 +122,8 @@ class CLIConfig:
 
         self.config.last_db = database_name
 
-        if db_conf['type'] == 'local':
-            raise UserWarning("Not supported, deprecated in 0.7.0")
-        elif db_conf['type'] == 'mysql_server':
-            raise UserWarning("Not supported, deprecated in 0.7.0")
-        elif db_conf['type'] == 'postgress_server':
-            raise UserWarning("Not supported, deprecated in 0.7.0")
+        if db_conf['type'] in ['local', 'mysql_server', 'postgress_server']:
+            raise self.DatabaseDeprecatedException("Not supported, deprecated in 0.7.0", db_conf)
         elif db_conf['type'] == 'mongodb':
             # todo: enable socket connection
             if db_conf['auth']:
@@ -952,7 +964,9 @@ class CLI:
                 self.db.close()
                 self.conf.save()
                 return
-        console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\nDatabase Spec Revision {}, Backend Revision {}, CLI Revision {}\nSelected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
+        console.print(rich.panel.Panel("[bold]Welcome to the E707PD[/bold]\n"
+                                       "Database Spec Revision {}, Backend Revision {}, CLI Revision {}\n"
+                                       "Selected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
                 to_do = questionary.select("Select the component you want do things with:",
@@ -1009,7 +1023,6 @@ class CLI:
 
 
 def ask_for_database(config: CLIConfig):
-    console.print("Oh no, no database is configured. Let's get that settled")
     db_id_name = questionary.text("What do you want to call this database").unsafe_ask()
     is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mongoDb']).unsafe_ask()
     if is_server == 'mongoDb':
@@ -1022,19 +1035,126 @@ def ask_for_database(config: CLIConfig):
             password = questionary.password("What is the database password?").unsafe_ask()
             is_auth = True
         config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth)
+    return db_id_name
+
+
+def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, import_file: str):
+    """
+    An importer sub-application that imports an existing "database" from a CSV file
+
+    Args:
+        conf:
+        database_connection:
+        import_file:
+
+    Returns:
+
+    """
+    if not os.path.isfile(import_file):
+        console.print("[red]The given file does not exist[/]")
+        return
+
+    _, f_ext = os.path.splitext(import_file)
+    if f_ext != '.csv':
+        console.print("[red]The given file is not a CSV[/]")
+        return
+
+    todo = questionary.confirm(f"Do you want to import data from {import_file}", auto_enter=False, default=False).ask()
+    if todo is False:
+        console.print("Not importing file")
+        return
+
+    db = e7epd.E7EPD(database_connection)
+
+    new_parts = []
+    with open(import_file, 'r') as f:
+        header = f.readline().strip()
+        header = header.split(',')
+        console.print("The following are your headers: (column, header name)")
+        for i, h in enumerate(header):
+            console.print(f"\t{i} --> {h}")
+
+        try:
+            column_to_key = {}
+            for i, h in enumerate(header):
+                choices = [questionary.Choice(title=f"{v.showcase_name} (Required)" if v.required else f"{v.showcase_name}", value=i) for i, v in e7epd.spec.BasePartItems.items() if i not in column_to_key.values()]
+                if 'type' not in column_to_key.values():
+                    choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Part Type (Required)')]), value='type')]
+                choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None')]), value='None')]
+                a = questionary.select(f"What database key matches the column {i} ({h})?", choices=choices).unsafe_ask()
+                if a == 'None':
+                    a = None
+                column_to_key[i] = a
+        except KeyboardInterrupt:
+            console.print("[red]Exited[/]")
+            return
+
+        console.print(f"The following is the mapping between column and database key: {column_to_key}")
+
+        # Check for all required keys
+        for c in e7epd.spec.BasePartItems:
+            if e7epd.spec.BasePartItems[c].required and c not in column_to_key.values():
+                console.print(f"Did not select the required key {c}")
+                return
+
+        try:
+            # Go thru, and for each line add it as a part
+            csv_type_to_internal_type = {}
+            part_type_choice = [questionary.Choice(i.showcase_name, value=i.db_type_name) for i in db.comp_types]
+            for line_i, line in enumerate(f):
+                new_part = {}
+                line = line.strip().split(',')
+                if len(header) != len(line):
+                    console.print(f"[red]Line {line_i} is not the same length as the header. Exiting[/]")
+                    return
+                for column_i, line_item in enumerate(line):
+                    if column_to_key[column_i] is None:
+                        continue
+                    if column_to_key[column_i] == 'type':
+                        # todo: allow type to be given once we can parse all required info for the type
+                        continue
+                        if line_item not in csv_type_to_internal_type:
+                            pt = questionary.select(f"What is the part type for string '{line_item}'?", choices=part_type_choice).unsafe_ask()
+                            csv_type_to_internal_type[line_item] = pt
+                        line_item = csv_type_to_internal_type[line_item]
+                    new_part[column_to_key[column_i]] = line_item
+                new_parts.append(new_part)
+        except KeyboardInterrupt:
+            console.print("[red]Exited[/]")
+            return
+
+    console.print(f"The imported parts: {new_parts}")
+    if questionary.confirm("Would you like to add these parts", default=False).ask() is not True:
+        console.print("Understood, not adding parts")
+        return
+
+    for part in new_parts:
+        db.add_new_part(e7epd.spec.Others, part)
+
+def setup_logger(is_debug: bool = False):
+    l = logging.getLogger()
+    l.setLevel(logging.DEBUG)
+
+    rich_handler = RichHandler()
+    if is_debug:
+        rich_handler.setLevel(logging.DEBUG)
+    else:
+        rich_handler.setLevel(logging.INFO)
+
+    sys_log = logging.handlers.SysLogHandler()
+    sys_log.setLevel(logging.DEBUG)
+
+    l.addHandler(rich_handler)
+    l.addHandler(sys_log)
 
 
 def main():
     parser = argparse.ArgumentParser(description='E7EPD CLI Application')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
+    parser.add_argument('--import_csv', help='Run the importer utility with the given CSV', default=None)
     args = parser.parse_args()
 
-    l = logging.getLogger()
-    if args.verbose:
-        l.setLevel(logging.DEBUG)
-    else:
-        l.setLevel(logging.ERROR)
-    l.addHandler(RichHandler())
+    setup_logger(args.verbose)
 
     c = CLIConfig()
     db_name = None
@@ -1044,6 +1164,7 @@ def main():
             break
         except c.NoDatabaseException:
             try:
+                console.print("Oh no, no database is configured. Let's get that settled")
                 ask_for_database(c)
             except KeyboardInterrupt:
                 console.print("No database given. Exiting")
@@ -1053,9 +1174,29 @@ def main():
             if db_name is None:
                 console.print("No database is selected to communicate to. Please restart and select something")
                 sys.exit(-1)
+        except c.DatabaseDeprecatedException as e:
+            if questionary.confirm("Database is too old, migrate?").ask() is not True:
+                console.print("Exiting")
+                sys.exit(-1)
+            console.print("Enter the new MongoDB Connection")
+            try:
+                new_db = ask_for_database(c)
+            except KeyboardInterrupt:
+                console.print("No database given. Exiting")
+                sys.exit(-1)
+
+            new_db_conn = c.get_database_connection(new_db)
+            migration.update_06_to_07(new_db_conn, e.args[1])
+            console.print("Done with migration :)")
+            break
+
         except c.DatabaseConnectionException:
             console.print("Unable to connect to database")
             sys.exit(-1)
+
+    if args.import_csv is not None:
+        importer_app(c, db_conn, args.import_csv)
+        return
 
     c = CLI(config=c, database_connection=db_conn)
     c.main()

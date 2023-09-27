@@ -44,7 +44,7 @@ class PartSpec:
     """
     How each part specification should be organized as
     """
-    db_type_name: str
+    db_type_name: typing.Union[str, None]
     showcase_name: str
     table_display_order: tuple
     items: typing.Dict[str, SpecLineItem]
@@ -225,9 +225,9 @@ Buttons = PartSpec(
     }
 )
 
-Misc = PartSpec(
-    db_type_name='misc',
-    showcase_name='Misc',
+Others = PartSpec(
+    db_type_name=None,        # Misc parts's type will be empty
+    showcase_name='Other',
     table_display_order=eedata_generic_items_preitems+eedata_generic_items_postitems,
     items={
         **BasePartItems,

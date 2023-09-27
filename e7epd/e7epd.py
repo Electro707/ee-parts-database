@@ -123,7 +123,7 @@ class E7EPD:
         spec.Fuse,
         spec.Crystal,
         spec.Buttons,
-        spec.Misc,
+        spec.Others
     ]
 
     def __init__(self, db_client: pymongo.MongoClient):
@@ -445,7 +445,8 @@ class E7EPD:
         """
         Updates the database to the most recent revision
 
-        todo: from 0.6 to 0.7, make an external migration script!
+        For 0.1.0 to 0.6.0, use older version of this software
+        For 0.6.0 to 0.7.0, use migration.py
         """
         v = self.config.get_db_version()
         # note: no new version to upgrade to yet
