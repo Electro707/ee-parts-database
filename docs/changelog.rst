@@ -40,6 +40,8 @@ E7EPD Database Specification
     * Changed the SQL primary key for all components to ``mfr_part_numb``, and removed the ``id`` column
     * Added a ``user`` column for all components
     * Removed ``sub_rev`` column from ``PCB`` table
+* v0.6 (beta):
+    * With the migration to MongoDB, keys are what is specified
 
 Database Python DB Wrapper
 --------------------------------------------
@@ -89,6 +91,9 @@ Database Python DB Wrapper
     * Removed the `EmptyInDatabase` return exception from `get_all_mfr_part_numb_in_db()`, instead just returns an empty list
 * v0.6.0:
     * No changes
+* v0.7.0 (beta):
+    * Migration to MongoDb as the database backend instead of SQL-like DB
+    * Added migration tool from SQL
 
 
 CLI
@@ -136,6 +141,9 @@ CLI
     * Allowing for MySQL or PostgreSQL options for database
     * Better CLI handling if one does not want to upgrade database
     * Better docs
+* v0.7.0 (beta):
+    * Migration to MongoDB
+    * Preliminary import function
 
 * TODOs:
     * Add option to import BOM file/CSV file

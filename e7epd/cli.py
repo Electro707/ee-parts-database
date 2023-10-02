@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
     E707PD Python CLI Application
-    Rev 0.5
+    Rev 0.7
 """
 import dataclasses
 # External Modules Import
@@ -35,7 +35,6 @@ import tempfile
 # Local Modules Import
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
-from e7epd import migration
 # Import of my fork of the digikey_api package
 try:
     from e707_digikey.v3.api import DigikeyAPI
@@ -105,10 +104,7 @@ class CLIConfig:
         Gets a database connection based off the database name.
 
         Args:
-            database_name:
-
-        Returns:
-
+            database_name: The database name (internal name) to get a connection to
         """
         # todo: add JSON file compatibility
         if database_name is None:
@@ -122,20 +118,33 @@ class CLIConfig:
 
         self.config.last_db = database_name
 
+        return self.get_database_client(db_conf)
+
+    def get_database_client(self, db_conf: dict):
+        """
+        This function just returns the client, without any of the config checking.
+
+        Args:
+            db_conf: The database config dictionary
+        """
         if db_conf['type'] in ['local', 'mysql_server', 'postgress_server']:
             raise self.DatabaseDeprecatedException("Not supported, deprecated in 0.7.0", db_conf)
         elif db_conf['type'] == 'mongodb':
             # todo: enable socket connection
+            ssl_on = db_conf['ssl']
             if db_conf['auth']:
                 conn_str = f"mongodb://{db_conf['username']}:{db_conf['password']}@{db_conf['db_host']}:27017/"
             else:
                 conn_str = f"mongodb://{db_conf['db_host']}:27017/"
-            conn = pymongo.MongoClient(conn_str, serverSelectionTimeoutMS=1000*2)
+            conn = pymongo.MongoClient(conn_str, serverSelectionTimeoutMS=1000*2, tls=ssl_on)
             try:
                 # The ping command is cheap and does not require auth.
                 conn.admin.command('ping')
             except pymongo.errors.ConnectionFailure:
                 self.log.exception("ConnectionFailure going to database")
+                raise self.DatabaseConnectionException()
+            except pymongo.errors.OperationFailure:
+                self.log.exception("OperationFailure going to database")
                 raise self.DatabaseConnectionException()
             return conn
 
@@ -162,18 +171,36 @@ class CLIConfig:
     def save_database_as_postgress(self, database_name: str, username: str, password: str, db_name: str, host: str):
         raise DeprecationWarning("Removed in 0.7.0")
 
-    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str, authenticated: bool = False):
-        self._save_database_as_hostsb(database_name, username, password, host)
+    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str, authenticated: bool = False, ssl: bool = False):
+        """
+        Saves a database info as a Mongo
+        Args:
+            database_name: The database name (internal id)
+            username: The db username
+            password: The db password
+            host: The db host
+            authenticated: Whether the server needs authentication or not
+            ssl: Whether the connection will have ssl/tls enabled
+        """
+        self._save_database_generic(database_name, username, password, host)
         self.config.db_list[database_name]['type'] = 'mongodb'
         self.config.db_list[database_name]['auth'] = authenticated
+        self.config.db_list[database_name]['ssl'] = ssl
         self.save()
 
-    def _save_database_as_hostsb(self, database_name: str, username: str, password: str, host: str):
+    def _save_database_generic(self, database_name: str, username: str, password: str, host: str):
         if database_name not in self.config.db_list:
             self.config.db_list[database_name] = {}
         self.config.db_list[database_name]['username'] = username
         self.config.db_list[database_name]['password'] = password
         self.config.db_list[database_name]['db_host'] = host
+
+    def delete_database(self, database_name: str):
+        self.log.debug(f"Deleting database config {database_name}")
+        if database_name not in self.config.db_list:
+            raise self.NoLastDBSelectionException()
+        del self.config.db_list[database_name]
+        self.save()
 
 
 class DigikeyHandler:
@@ -795,7 +822,7 @@ class CLI:
                 if to_change == 'no_save':
                     raise KeyboardInterrupt()
                 try:
-                    new_val = self.ask_for_spec_input(part_db, to_change, self.get_autocomplete_list(to_change, part_db.db_type_name))
+                    new_val = self.ask_for_spec_input(part_db.items[to_change], self.get_autocomplete_list(to_change, part_db.db_type_name))
                     to_update[to_change] = new_val
                     component[to_change] = new_val
                 except KeyboardInterrupt:
@@ -930,11 +957,9 @@ class CLI:
                     console.print("Nothing new was selected")
                     continue
                 t = self.conf.get_database_connection_info(db_name)
-                if t['type'] == 'local':
-                    console.print("This is a SQLite3 server, where the file path is {}".format(t['filename']))
-                elif t['type'] == 'mongodb':
+                if t['type'] == 'mongodb':
                     # todo: special print if auth is not enable or not
-                    console.print("This is a mySQL server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t, db_name=db_name))
+                    console.print("This is a Mongo server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t, db_name=db_name))
 
     # todo: this
     # def digikey_api_settings_menu(self):
@@ -1027,6 +1052,7 @@ def ask_for_database(config: CLIConfig):
     is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mongoDb']).unsafe_ask()
     if is_server == 'mongoDb':
         host = questionary.text("What is the database host?").unsafe_ask()
+        ssl = questionary.confirm("Will the server be connected with SSL/TSL?", auto_enter=False, default=False).unsafe_ask()
         username = questionary.text("What is the database username (Enter nothing for un-auth)?").unsafe_ask()
         if username == '':
             password = ''
@@ -1034,7 +1060,15 @@ def ask_for_database(config: CLIConfig):
         else:
             password = questionary.password("What is the database password?").unsafe_ask()
             is_auth = True
-        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth)
+        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth, ssl=ssl)
+        # try and get the database
+        try:
+            c = config.config.db_list[db_id_name]
+            config.get_database_client(c)
+        except config.DatabaseConnectionException:
+            console.print("Failed with new database...removing it")
+            config.delete_database(db_id_name)
+            raise KeyboardInterrupt()       # for now, can be improved later!
     return db_id_name
 
 
@@ -1158,10 +1192,12 @@ def main():
 
     c = CLIConfig()
     db_name = None
+    db_conn = None
     while 1:
         try:
             db_conn = c.get_database_connection(db_name)
             break
+        # if no database was configured
         except c.NoDatabaseException:
             try:
                 console.print("Oh no, no database is configured. Let's get that settled")
@@ -1169,15 +1205,23 @@ def main():
             except KeyboardInterrupt:
                 console.print("No database given. Exiting")
                 sys.exit(-1)
+        # if there wasn't a default/last database selected
         except c.NoLastDBSelectionException:
             db_name = questionary.select("A database was not selected last time. Please select which database to connect to", choices=c.get_stored_db_names()).ask()
             if db_name is None:
                 console.print("No database is selected to communicate to. Please restart and select something")
                 sys.exit(-1)
+        # if we are still running an MySQL server, which has been deprecated!
         except c.DatabaseDeprecatedException as e:
+            from e7epd import migration
+
+            if not migration.old_sql_available:
+                console.print("The migration tool cannot import sqlachemy. Run this with -v to see detailed logs")
+                sys.exit(-1)
             if questionary.confirm("Database is too old, migrate?").ask() is not True:
                 console.print("Exiting")
                 sys.exit(-1)
+            old_sql_name = c.config.last_db
             console.print("Enter the new MongoDB Connection")
             try:
                 new_db = ask_for_database(c)
@@ -1186,10 +1230,17 @@ def main():
                 sys.exit(-1)
 
             new_db_conn = c.get_database_connection(new_db)
-            migration.update_06_to_07(new_db_conn, e.args[1])
+            try:
+                migration.update_06_to_07(new_db_conn, e.args[1])
+            except Exception as e:
+                logging.exception("Error then importing")
+                console.print("Other exception happened :(. See logs above")
+                c.delete_database(new_db)
+                continue
             console.print("Done with migration :)")
-            break
-
+            c.delete_database(old_sql_name)     # delete old sql db from name
+            continue
+        # If we are not able to connect to the database for any reason!
         except c.DatabaseConnectionException:
             console.print("Unable to connect to database")
             sys.exit(-1)

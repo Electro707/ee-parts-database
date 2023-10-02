@@ -4,4 +4,4 @@ from e7epd.e7epd import SpecWithOperator, ComparisonOperators
 import e7epd.e707pd_spec as spec
 
 # Version of this backend
-__version__ = '0.7.0-dev'
+__version__ = '0.7.0-beta'

@@ -12,8 +12,7 @@ need the following packages as well:
 * `rich <https://pypi.org/project/rich/>`__
 * `questionary <https://pypi.org/project/questionary/>`__
 * `engineering_notation <https://pypi.org/project/engineering-notation/>`__
-* `SQLAlchemy <https://pypi.org/project/SQLAlchemy/>`__
-* `alembic <https://pypi.org/project/alembic/>`__
+* `pymongo <https://pypi.org/project/pymongo/>`__
 
 Usage
 ++++++++++++++++++++++++

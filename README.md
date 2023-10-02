@@ -1,5 +1,5 @@
 # E707 Electronics Parts Database (E7EPD)
-## Database Rev 0.7.0-dev, Backend and CLI Rev 0.7.0-dev
+## Database Rev 0.6-beta, Backend and CLI Rev 0.7.0-beta
 ## Still a Work-In-Progress
 
 This project attempts to create yet another open-source electronics parts management system. While there are some out
@@ -29,6 +29,7 @@ pip install .
   
 ## Security:
 #### NOTICE: The password for the database server is stored in a json file in plain format. Make sure the db account only has permission to the parts' database.
+#### NOTICE: The database between the server and the client can be in plain-text if ssl is not enabled with the new Mongo setup
 
 ## CLI Application
 To start using this application/database, simply launch `e7epd` from the command line. Prompts should show up, allowing you to interact with the 
@@ -50,12 +51,11 @@ The python file `e7epd.py` includes a `E7EPD` class, which is a wrapper for the 
 To add the database wrapper `e7epd.py` to your project, you will need Python>3.7 with their pre-installed packages as well as the following extra packages:
 - [pymongo](https://pypi.org/project/pymongo/)
   
-The following packages are required to run it:
+The following packages are required to run the `e7epd` CLI utility:
 - [rich](https://pypi.org/project/rich/)
 - [engineering_notation](https://pypi.org/project/engineering-notation/)
 - [questionary](https://pypi.org/project/questionary/)
-- [SQLAlchemy](https://pypi.org/project/SQLAlchemy/)
-- [alembic](https://pypi.org/project/alembic/)
+- [pymongo](https://pypi.org/project/pymongo/)
 
 ## Changelog and In-Progress
 For the changelog and in-progress additions, see [the project's master changelog](https://e7epd.readthedocs.io/en/latest/changelog.html) for more details on that.

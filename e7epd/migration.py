@@ -16,8 +16,14 @@ try:
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy import select
     from sqlalchemy.orm import DeclarativeBase
-except ImportError:
+    # importing to see if mysqlclient exits, as it is used by sqlalchemy internally
+    import MySQLdb
+    # A safety check to ensure the right version of sqlAlchemy is loaded
+    if not sqlalchemy.__version__.startswith("2."):
+        raise ImportError(f"SQLAlchemy version is not 2.x.x, but is {sqlalchemy.__version__}")
+except ImportError as e:
     old_sql_available = False
+    logging.getLogger('e7epd.migration').debug(e)
 else:
     old_sql_available = True
 
@@ -73,7 +79,7 @@ class Capacitor(GenericItem):
         ['capacitance', 'capacitance'],
         ['tolerance', 'tolerance'],
         ['max_voltage', 'max_voltage'],
-        ['temp_coeff', 'max_voltage'],
+        ['temp_coeff', 'temp_coeff'],
         ['cap_type', 'cap_type'],
     ]
     db_type = 'capacitor'
@@ -149,7 +155,7 @@ class MOSFET(GenericItem):
     i_d_pulse = Column(Float)
 
     sql_to_mong_mapping = [
-        ['mosfet_type', 'mosfet_type'],
+        ['mosfet_type', 'fet_type'],
         ['vdss', 'vds'],
         ['vgss', 'vgs'],
         ['vgs_th', 'vgs_th'],
@@ -192,6 +198,7 @@ class LED(GenericItem):
         ['vf', 'vf'],
         ['max_i', 'max_i'],
     ]
+    new_keys = ['color']
     db_type = 'led'
 
 
@@ -259,6 +266,8 @@ def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
     if not old_sql_available:
         raise UserWarning("Cannot upgrade: sqlalchamy dependency is un-met")
 
+    log = logging.getLogger('e7epd.migration')
+
     if sql_info['type'] == 'local':
         sql_conn = sqlalchemy.create_engine("sqlite:///{}".format(pkg_resources.resource_filename(__name__, 'data/' + sql_info['filename'])))
     elif sql_info['type'] == 'mysql_server':
@@ -274,7 +283,7 @@ def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
     else:
         raise UserWarning("Invalid db_type")
 
-
+    all_new_parts = []
     with sql_conn.connect() as conn:
         for comp in all_components:
             stmt = select(comp)
@@ -282,5 +291,16 @@ def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
                 new_part = {'type': comp.db_type}
                 for i in comp.sql_to_mong_mapping_gen:
                     new_part[i[1]] = getattr(row, i[0])
-                print(new_part)
+                for i in comp.sql_to_mong_mapping:
+                    new_part[i[1]] = getattr(row, i[0])
+                if hasattr(comp, 'new_keys'):
+                    for k in comp.new_keys:
+                        new_part[k] = None
+                log.debug(f"New part: {new_part}")
+                all_new_parts.append(new_part)
 
+    # return
+
+    coll = mongo_conn['ee-parts-db']['parts']
+    coll.insert_many(all_new_parts)
+    log.info("Done with migration!")

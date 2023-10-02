@@ -147,10 +147,10 @@ Crystal = PartSpec(
 FET = PartSpec(
     db_type_name='fet',
     showcase_name='FET',
-    table_display_order=eedata_generic_items_preitems+('mosfet_type', 'vds', 'vgs', 'vgs_th', 'i_d', 'i_d_pulse')+eedata_generic_items_postitems,
+    table_display_order=eedata_generic_items_preitems+('fet_type', 'vds', 'vgs', 'vgs_th', 'i_d', 'i_d_pulse')+eedata_generic_items_postitems,
     items={
         **BasePartItems,
-        'mosfet_type': SpecLineItem('FET Type', ShowAsEnum.normal, str, True),
+        'fet_type': SpecLineItem('FET Type', ShowAsEnum.normal, str, True),
         'vds': SpecLineItem('Max Vds', ShowAsEnum.engineering, float, False, 'V'),
         'vgs': SpecLineItem('Max Vgs', ShowAsEnum.engineering, float, False, 'V'),
         'vgs_th': SpecLineItem('Vgs Threshold', ShowAsEnum.engineering, float, False, 'V'),

@@ -1,7 +1,10 @@
 E7EPD Database Specification
 ================================================
-**Rev 0.6-dev**
+**Rev 0.6-beta**
 
+.. warning::
+    THIS DOCUMENTATION MAY NOT BE UP TO DATE, AS THIS IS STILL
+    IN BETA
 
 PyMongo
 ---------------------------------
@@ -41,14 +44,15 @@ GenericPart Items
 ============= ========================= =========== =======================================================
 Name          Variable Type             Required?   Description
 ============= ========================= =========== =======================================================
-ipn           str                       YES
+ipn           str                       YES         The Internal-Part-Number, used to distinguish each part from another
 stock         int                       YES         The number of parts in stock
-mfr_part_numb str                       YES         The manufacturer part number, used to distinguish each part from another
+mfr_part_numb str                                   The manufacturer part number
 manufacturer  str                                   The manufacturer of the component
 package       str                       YES         The part's physical package
 storage       str                                   The part's storage location
 comments      str                                   Comments about the part
 datasheet     str                                   The datasheet of the part
+user          dict                                  The part user's information
 ============= ========================= =========== =======================================================
 
 Resistor Table
@@ -57,7 +61,7 @@ Append the *GenericPart* items to this table.
 Type: ``resistance``
 
 ============= ========================= =========== =======================================================
-Name          SQL Type                  Required?   Description
+Name          Variable Type             Required?   Description
 ============= ========================= =========== =======================================================
 resistance    FLOAT                     YES         The resistor's resistance
 tolerance     FLOAT                                 The resistor's tolerance as a float (so a 5% resistor will be stored as 5)
@@ -94,7 +98,7 @@ max_current   FLOAT                                 The inductor's maximum curre
 
 Diode Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Table Name: ``diode``
 
 ================= ========================= =========== =======================================================
@@ -108,7 +112,7 @@ max_rv            FLOAT                                 Max reverse voltage
 
 IC Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Table Name: ``ic``
 
 ============= ========================= =========== =======================================================
@@ -119,7 +123,7 @@ ic_type       VARCHAR                   YES         The IC type, for example mic
 
 Crystal Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Table Name: ``crystal``
 
 =============== =========================== =========== =======================================================
@@ -131,25 +135,25 @@ esr             FLOAT                                   The ECR (in Ohms) of the
 stability_ppm   FLOAT                                   The stability (in ppm) of the crystal
 =============== =========================== =========== =======================================================
 
-MOSFET Table
+FET Spec
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
-Table Name: ``mosfet``
+Append the *GenericPart* Spec to this.
+Table Name: ``fet``
 
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
 =============== =========================== =========== =======================================================
-mosfet_type     VARCHAR                     YES         The MOSFET type (N-Channel or P-Channel)
-vdss            FLOAT                                   The max Drain-Source voltage of the MOSFET
-vgss            FLOAT                                   The max Gate-Source voltage of the MOSFET
-vgs_th          FLOAT                                   The Gate-Source threshold voltage of the MOSFET
-i_d             FLOAT                                   The max continuous drain current of the MOSFET
-i_d_pulse       FLOAT                                   The max pulsed/peak drain current of the MOSFET
+fet_type        VARCHAR                     YES         The MOSFET type (N-Channel or P-Channel)
+vds             FLOAT                                   The max Drain-Source voltage of the FET
+vgs             FLOAT                                   The max Gate-Source voltage of the FET
+vgs_th          FLOAT                                   The Gate-Source threshold voltage of the FET
+i_d             FLOAT                                   The max continuous drain current of the FET
+i_d_pulse       FLOAT                                   The max pulsed/peak drain current of the FET
 =============== =========================== =========== =======================================================
 
 BJT Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Table Name: ``bjt``
 
 =============== =========================== =========== =======================================================
@@ -165,7 +169,7 @@ i_c_peak        FLOAT                                   The max pulsed/peak coll
 
 Connector Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Table Name: ``connector``
 
 ============= ========================= =========== =======================================================
@@ -176,7 +180,7 @@ conn_type     VARCHAR                   YES         The connector type (Banana, 
 
 LED Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Table Name: ``led``
 
 ============= ========================= =========== =======================================================
@@ -189,7 +193,7 @@ max_i         FLOAT                                 The LED's maximum forward cu
 
 Fuse Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Type: ``fuse``
 
 ============= ========================= =========== =======================================================
@@ -204,7 +208,7 @@ hold_i        FLOAT                                 The fuse's hold current
 
 Button/Switch Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Append the *GenericPart* Table to this table.
+Append the *GenericPart* Spec to this.
 Type: ``button``
 
 ============= ========================= =========== =======================================================

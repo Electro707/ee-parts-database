@@ -12,12 +12,7 @@ import typing
 import e7epd.e707pd_spec as spec
 
 # Version of the database spec
-database_spec_rev = '0.7.0-dev'
-
-# A safety check to ensure the right version of sqlAlchemy is loaded
-# if sqlalchemy.__version__ != "1.4.0":
-#     raise ImportError(f"SQLAlchemy version is not 1.4.0, but is {sqlalchemy.__version__}")
-
+database_spec_rev = '0.6-beta'
 
 class InputException(Exception):
     """ Exception that gets raised on any input error """
@@ -305,8 +300,6 @@ class E7EPD:
 
         Returns: The number of documents in the database
         """
-        if part_class.db_type_name is None:
-            raise UserWarning("Invalid input part class")
         d = self.part_coll.count_documents({'type': part_class.db_type_name})
         return d
 
@@ -329,7 +322,7 @@ class E7EPD:
         q = {}
         if part_class is not None:
             q['type'] = part_class.db_type_name
-        # Go thru parts to filter
+        # Go through parts to filter
         for f in to_filter:
             if f.operator != ComparisonOperators.equal and type(f.val) is str:
                 raise InputException("Gave some comparison operator while input is a string")
@@ -370,9 +363,10 @@ class E7EPD:
         for d in new_part:
             if d not in part_class.items.keys():
                 raise InputException(f"Given key of {d} is not part of the spec")
-            if type(new_part[d]) != part_class.items[d].input_type:
-                raise InputException(f"Input value of {new_part[d]} for {d} is "
-                                     f"not of type {part_class.items[d].input_type}")
+            if new_part[d] is not None:
+                if type(new_part[d]) != part_class.items[d].input_type:
+                    raise InputException(f"Input value of {new_part[d]} for {d} is "
+                                         f"not of type {part_class.items[d].input_type}")
         # Set type
         new_part['type'] = part_class.db_type_name
         # Check if all required keys are matched
@@ -452,40 +446,6 @@ class E7EPD:
         # note: no new version to upgrade to yet
         self.config.store_current_db_version()
 
-        # def mydefault(context):
-        #     return context.get_current_parameters()['name']
-        #
-        # with self.db_conn.connect() as conn:
-        #     ctx = MigrationContext.configure(conn)
-        #     op = Operations(ctx)
-        #     self.log.info("Backing up database before applying changes")
-        #     self.backup_db()
-        #     v = self.config.get_db_version()
-        #     if v == '0.2':   # From 0.2 -> 0.3
-        #         for c in self.components:
-        #             op.add_column(self.components[c].table_name, Column('storage', String(spec.default_string_len)))
-        #             op.drop_column(self.components[c].table_name, 'part_comments')
-        #             op.alter_column(self.components[c].table_name, 'user_comments', new_column_name='comments', type_=Text)
-        #         # Remove the capacitor's power column
-        #         op.drop_column(self.components['Capacitors'].table_name, 'power')
-        #         v = '0.3'
-        #     if v == '0.3':   # From 0.3 -> 0.4
-        #         # Add the datasheet column for each component
-        #         for c in self.components:
-        #             op.add_column(self.components[c].table_name, Column('datasheet', Text))
-        #         op.alter_column(self.pcbs.table_name, 'project_name', type_=String(spec.default_string_len), new_column_name='board_name')
-        #         op.add_column(self.pcbs.table_name, Column('parts', JSON, nullable=False))
-        #     if v == '0.4':
-        #         for c in self.components:
-        #             op.drop_column(self.components[c].table_name, 'id')
-        #             op.create_primary_key(None, self.components[c].table_name, ['mfr_part_numb'])
-        #             op.add_column(self.components[c].table_name, Column('user', String(spec.default_string_len)))
-        #     if v == '0.5':
-        #         for c in self.components:
-        #             op.add_column(self.components[c].table_name, Column('ipn', String(spec.default_string_len), default=mydefault, nullable=False))
-        #             # op.drop_constraint(self.components[c].table_name, 'mfr_part_numb', type_='primary')
-        #             # op.create_primary_key(None, self.components[c].table_name, ['ipn'])
-
     def is_latest_database(self) -> bool:
         """
             Returns whether the database is matched with the latest rev
@@ -516,7 +476,7 @@ class E7EPD:
     def _check_spec_required(spec_k: str, spec_i: spec.SpecLineItem, part_dict: dict):
         if spec_i.required:
             if spec_k not in part_dict:
-                raise InputException(f"Required key of {d} is not found in the new part dict")
+                raise InputException(f"Required key of {spec_k} is not found in the new part dict")
 
 
 def print_formatted_from_spec(part_class: spec.PartSpec, part_data: dict) -> typing.Union[None, str]:
