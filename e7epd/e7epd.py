@@ -39,7 +39,7 @@ class NegativeStock(Exception):
         super().__init__('Stock will go to negative')
 
 
-class ComparisonOperators(enum.StrEnum):
+class ComparisonOperators(enum.Enum):
     """ Comparison operators as an enum """
     equal = '=='
     less = '<'
