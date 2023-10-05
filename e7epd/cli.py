@@ -12,6 +12,7 @@ import importlib
 import rich
 import rich.console
 import rich.panel
+import rich.pretty
 from rich.prompt import Prompt
 from rich.logging import RichHandler
 import rich.table
@@ -1084,6 +1085,8 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, impo
     Returns:
 
     """
+    log = logging.getLogger('importer_app')
+
     if not os.path.isfile(import_file):
         console.print("[red]The given file does not exist[/]")
         return
@@ -1108,13 +1111,15 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, impo
         for i, h in enumerate(header):
             console.print(f"\t{i} --> {h}")
 
+        # Map the columns to a key
+        column_to_key = {}
+        """Maps a column index to a part spec key (stock, resistance, etc)"""
         try:
-            column_to_key = {}
             for i, h in enumerate(header):
                 choices = [questionary.Choice(title=f"{v.showcase_name} (Required)" if v.required else f"{v.showcase_name}", value=i) for i, v in e7epd.spec.BasePartItems.items() if i not in column_to_key.values()]
                 if 'type' not in column_to_key.values():
                     choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Part Type (Required)')]), value='type')]
-                choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None')]), value='None')]
+                choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None/Other')]), value='None')]
                 a = questionary.select(f"What database key matches the column {i} ({h})?", choices=choices).unsafe_ask()
                 if a == 'None':
                     a = None
@@ -1123,47 +1128,108 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, impo
             console.print("[red]Exited[/]")
             return
 
+        # Check for all required keys for the base part
         console.print(f"The following is the mapping between column and database key: {column_to_key}")
-
-        # Check for all required keys
         for c in e7epd.spec.BasePartItems:
             if e7epd.spec.BasePartItems[c].required and c not in column_to_key.values():
-                console.print(f"Did not select the required key {c}")
+                console.print(f"Did not select the required key [bold]'{c}'[/bold]")
                 return
 
+        console.print(f"The following is the mapping between column and database key: {column_to_key}")
+
+        # Go through the entire file (kind of stupid, but no easy way around it) to check for all possible types
+        # then ask the user what column will be used for the part parameter
+        csv_type_to_internal_type = {}      # type: typing.Dict[str, e7epd.spec.PartSpec]
+        part_type_choice = [questionary.Choice(i.showcase_name, value=i) for i in db.comp_types]
+        type_col = [i for i in column_to_key if column_to_key[i] == 'type'][0]      # get column where the type keyword exists
+        column_to_key_parts = {}
+        for line_i, line in enumerate(f):
+            line = line.strip().split(',')
+            if len(header) != len(line):
+                console.print(f"[red]Line {line_i} is not the same length as the header. Exiting[/]")
+                return
+            line_item = line[type_col]
+            if line_item not in csv_type_to_internal_type:
+                pt = questionary.select(f"What is the part type for string '{line_item}'?", choices=part_type_choice).unsafe_ask()
+                csv_type_to_internal_type[line_item] = pt
+                column_to_key_parts[pt.db_type_name] = {}
+                # ask the user which columns go with part-specific keys
+                for i, h in enumerate(header):
+                    # if we have the column in the "base part" item mapping, then don't both with the particular column for this
+                    if column_to_key[i] is not None:
+                        continue
+                    choices = [questionary.Choice(title=f"{v.showcase_name} (Required)" if v.required else f"{v.showcase_name}", value=i) for i, v in pt.items.items() if
+                               i not in column_to_key.values() and i not in e7epd.spec.BasePartItems.keys()]
+                    choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None')]), value='None')]
+                    a = questionary.select(f"What database key matches the column {i} ({h})?", choices=choices).unsafe_ask()
+                    if a == 'None':
+                        a = None
+                    column_to_key_parts[pt.db_type_name][i] = a
+
+        console.print(f"The following is the mapping between column and database key: {column_to_key_parts}")
+
+        # Now go back to the beginning of the file for the rest of the import, skipping the header of course!
+        f.seek(0)
+        f.readline()
         try:
             # Go thru, and for each line add it as a part
-            csv_type_to_internal_type = {}
-            part_type_choice = [questionary.Choice(i.showcase_name, value=i.db_type_name) for i in db.comp_types]
             for line_i, line in enumerate(f):
                 new_part = {}
                 line = line.strip().split(',')
                 if len(header) != len(line):
                     console.print(f"[red]Line {line_i} is not the same length as the header. Exiting[/]")
                     return
+                # get the type first (to check for type in other params)
+                new_part['type'] = csv_type_to_internal_type[line[type_col]]
+                # for each column in a particular row, add the information to new_part
                 for column_i, line_item in enumerate(line):
-                    if column_to_key[column_i] is None:
+                    if column_to_key[column_i] == 'type':   # we already have the type, don't worry about it again
                         continue
-                    if column_to_key[column_i] == 'type':
-                        # todo: allow type to be given once we can parse all required info for the type
+
+                    if column_to_key[column_i] is not None:
+                        curr_column_key = column_to_key[column_i]
+                        line_type = e7epd.spec.BasePartItems[curr_column_key].input_type
+                    elif column_i in column_to_key_parts[new_part['type'].db_type_name]:
+                        curr_column_key = column_to_key_parts[new_part['type'].db_type_name][column_i]
+                        line_type = new_part['type'].items[curr_column_key].input_type
+                    else:
                         continue
-                        if line_item not in csv_type_to_internal_type:
-                            pt = questionary.select(f"What is the part type for string '{line_item}'?", choices=part_type_choice).unsafe_ask()
-                            csv_type_to_internal_type[line_item] = pt
-                        line_item = csv_type_to_internal_type[line_item]
-                    new_part[column_to_key[column_i]] = line_item
+
+                    try:
+                        if line_type in [float, int]:
+                            # shitty attempt at removing any units by removing the last char of a string if it's not a number
+                            for end_unit in ['ohm', 'F', 'H', 'Ω']:
+                                if line_item.endswith(end_unit):
+                                    line_item = line_item[:-(len(end_unit))]
+                                    break
+                            try:
+                                line_item = EngNumber(line_item)
+                            except decimal.InvalidOperation:
+                                console.print(f"[red]Cannot convert {line_item} to Engineering Number in col {column_i} line {line_i+1}[/]")
+                                continue
+                        line_item = line_type(line_item)
+                    except ValueError:
+                        console.print(f"[red]Cannot convert {line_item} to {line_type}[/]")
+                        continue
+
+                    new_part[curr_column_key] = line_item
                 new_parts.append(new_part)
         except KeyboardInterrupt:
             console.print("[red]Exited[/]")
             return
 
-    console.print(f"The imported parts: {new_parts}")
+    console.print(f"The imported parts:")
+    rich.pretty.pprint(new_parts)
     if questionary.confirm("Would you like to add these parts", default=False).ask() is not True:
         console.print("Understood, not adding parts")
         return
 
     for part in new_parts:
-        db.add_new_part(e7epd.spec.Others, part)
+        # todo: add error if unable to add
+        try:
+            db.add_new_part(part['type'], part)
+        except e7epd.InputException:
+            log.exception(f"Unable to add part {part}")
 
 def setup_logger(is_debug: bool = False):
     l = logging.getLogger()

@@ -88,7 +88,7 @@ Capacitor = PartSpec(
     table_display_order=eedata_generic_items_preitems+('capacitance', 'tolerance', 'max_voltage', 'cap_type', 'temp_coeff')+eedata_generic_items_postitems,
     items={
         **BasePartItems,
-        'capacitance': SpecLineItem('capacitance', ShowAsEnum.engineering, float, True, f'F'),
+        'capacitance': SpecLineItem('Capacitance', ShowAsEnum.engineering, float, True, f'F'),
         'tolerance': SpecLineItem('Tolerance', ShowAsEnum.precentage, float, False),
         'max_voltage': SpecLineItem('Voltage Rating', ShowAsEnum.normal, float, False, 'V'),
         'temp_coeff': SpecLineItem('Temp Coeff', ShowAsEnum.normal, str, False),
