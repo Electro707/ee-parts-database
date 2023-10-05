@@ -18,7 +18,7 @@ from e7epd import __version__
 # -- Project information -----------------------------------------------------
 
 project = 'E7EPD Database'
-copyright = '2022, Electro707'
+copyright = '2023, Electro707'
 author = 'Electro707'
 
 # The full version, including alpha/beta/rc tags
