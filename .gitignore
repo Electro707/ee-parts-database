@@ -12,3 +12,5 @@ __pycache__
 # Python Build
 dist
 *.egg-info
+# generated pdf
+*.pdf

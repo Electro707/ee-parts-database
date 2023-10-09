@@ -36,6 +36,7 @@ import tempfile
 # Local Modules Import
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
+import e7epd.label_making
 # Import of my fork of the digikey_api package
 try:
     from e707_digikey.v3.api import DigikeyAPI
@@ -1072,6 +1073,37 @@ def ask_for_database(config: CLIConfig):
             raise KeyboardInterrupt()       # for now, can be improved later!
     return db_id_name
 
+def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
+    def isfloat(num):
+        try:
+            float(num)
+            return True
+        except ValueError:
+            return False
+
+    log = logging.getLogger('importer_app')
+
+    to_do = questionary.select("What export function you want?",
+                               choices=['Export to CSV', 'Print IPN Barcode', 'Exit'], use_shortcuts=True).ask()
+    if to_do is None or to_do == 'Exit':
+        console.print("Exiting!")
+        return
+
+    db = e7epd.E7EPD(database_connection)
+
+    if to_do == 'Print IPN Barcode':
+        width = questionary.text("What is the tape size in mm", validate=isfloat).ask()
+        if width is None or width == "":
+            return
+        width = float(width)
+        export = questionary.path("Select the export path").ask()
+        if export is None or export == "":
+            return
+        ipn_list = db.get_all_parts_by_keys(None, 'ipn')
+        e7epd.label_making.export_barcodes(ipn_list, width, export)
+    elif to_do == '':
+        console.print("Not implemented ")
+
 
 def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, import_file: str):
     """
@@ -1252,6 +1284,7 @@ def main():
     parser = argparse.ArgumentParser(description='E7EPD CLI Application')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
     parser.add_argument('--import_csv', help='Run the importer utility with the given CSV', default=None)
+    parser.add_argument('--export', action='store_true', help='Exports data in some what', default=None)
     args = parser.parse_args()
 
     setup_logger(args.verbose)
@@ -1313,6 +1346,10 @@ def main():
 
     if args.import_csv is not None:
         importer_app(c, db_conn, args.import_csv)
+        return
+
+    if args.export is not None:
+        exporter_app(c, db_conn)
         return
 
     c = CLI(config=c, database_connection=db_conn)
