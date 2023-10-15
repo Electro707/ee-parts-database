@@ -17,7 +17,9 @@ def _make_barcode(data: str, **writter_options) -> Image.Image:
     """Makes a barcode image"""
     constructor = python_barcode.get_barcode_class('code128')
     data = str(data).zfill(constructor.digits)
-    barcode_img = constructor(data, writer=python_barcode.writer.ImageWriter())
+    wr = python_barcode.writer.ImageWriter()
+    wr.dpi = 600
+    barcode_img = constructor(data, writer=wr)
     return barcode_img.render(writer_options=writter_options)
 
 
