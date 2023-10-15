@@ -37,14 +37,6 @@ import tempfile
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
 import e7epd.label_making
-# Import of my fork of the digikey_api package
-try:
-    from e707_digikey.v3.api import DigikeyAPI
-except ImportError:
-    digikey_api_en = False
-else:
-    digikey_api_en = True
-
 
 console = rich.console.Console(style="blue")
 
@@ -204,81 +196,6 @@ class CLIConfig:
         del self.config.db_list[database_name]
         self.save()
 
-
-class DigikeyHandler:
-    class _NoDigikeyApiError(Exception):
-        pass
-
-    def __init__(self, config_handler: e7epd.E7EPDConfigTable):
-        super().__init__()
-        self.log = logging.getLogger('DigikeyAPIConfig')
-        self.config = config_handler
-
-        self.is_digikey_available = digikey_api_en
-
-        if self.is_digikey_available:
-            self.digikey_api = DigikeyAPI(self.config)
-
-    def check_for_dk_api(self):
-        if not self.is_digikey_available:
-            console.print("[orange]API is not setup[/]")
-            console.print("[orange]Please install it with 'pip install git+https://github.com/Electro707/digikey-api.git@8549f42a1853c9d371c3fb1b0b8d780d405174d8'[/]")
-            raise self._NoDigikeyApiError
-
-    def check_for_db_config(self):
-        if self.digikey_api.needs_client_id() or self.digikey_api.needs_client_secret():
-            raise self._NoDigikeyApiError
-
-    def scan_digikey_barcode(self, bc_code: str = None):
-        """
-        Function that asks the user for a Digikey barcode scan, and finds the manufacturer part number as
-        well as the part's Digikey info if requested
-
-        TODO: The digikey info return should be parsed by this function to get useful values
-        Args:
-            bc_code (str): The scanned digikey barcode. In given, this function will not ask for it
-
-        Returns:
-
-        """
-        try:
-            self.check_for_dk_api()
-        except self._NoDigikeyApiError:
-            console.print("[red]No Digikey API is available[/]")
-            raise KeyboardInterrupt()
-        try:
-            self.check_for_db_config()
-        except self._NoDigikeyApiError:
-            console.print("[red]Client Secret/Client ID are not setup. Do so from the main menu[/]")
-            raise KeyboardInterrupt()
-
-        if bc_code is None:
-            bc_code = questionary.text("Enter the Digikey barcode: ").ask()
-        if bc_code == '' or bc_code is None:
-            console.print("[red]No barcode entered[/]")
-            raise KeyboardInterrupt()
-        bc_code = bc_code.strip()
-        bc_code = bc_code.replace('{RS}', u"\u001E")
-        bc_code = bc_code.replace('{GS}', u"\u001D")
-        try:
-            b = self.digikey_api.barcode_2d(bc_code)
-        except:  # TODO: Add specific exception
-            console.print("[red]Digikey Barcode API error[/]")
-            raise KeyboardInterrupt()
-        return b.manufacturer_part_number, b
-
-    def digikey_api_config_setup(self):
-        c_id = questionary.text("Enter the Digikey API client ID for the API: ").ask()
-        if c_id == '' or c_id is None:
-            console.print("[red]You need a client ID to use the digikey API[/]")
-            return
-        c_sec = questionary.password("Enter the Digikey API client secret for the API: ").ask()
-        if c_sec == '' or c_sec is None:
-            console.print("[red]You need a client ID to use the digikey API[/]")
-            return
-        self.digikey_api.set_client_info(client_id=c_id, client_secret=c_sec)
-
-
 class CLI:
     cli_revision = e7epd.__version__
 
@@ -296,7 +213,6 @@ class CLI:
     def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
-        self.dk = DigikeyHandler(self.db.config)
 
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
         self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
@@ -963,19 +879,6 @@ class CLI:
                     # todo: special print if auth is not enable or not
                     console.print("This is a Mongo server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t, db_name=db_name))
 
-    # todo: this
-    # def digikey_api_settings_menu(self):
-    #     try:
-    #         self.check_for_dk_api()
-    #     except self._NoDigikeyApiError:
-    #         return
-    #     while 1:
-    #         to_do = questionary.select("What do you want to? ", choices=["Set ClientID and ClientSecret", self.return_formatted_choice]).ask()
-    #         if to_do is None or to_do == "Return":
-    #             break
-    #         if to_do == 'Set ClientID and ClientSecret':
-    #             self.digikey_api_config_setup()
-
     def main(self):
         # Check DB version before doing anything
         if not self.db.is_latest_database():
@@ -1096,12 +999,24 @@ def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
         if width is None or width == "":
             return
         width = float(width)
+        # todo: add default path
         export = questionary.path("Select the export path").ask()
         if export is None or export == "":
             return
-        ipn_list = db.get_all_parts_by_keys(None, 'ipn')
+
+        choice = [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'All')]))] + \
+                 [questionary.Choice(title=i.showcase_name, value=i) for i in db.comp_types] + \
+                 [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))]
+        component = questionary.select("Select the component you want do things with:", choices=choice).ask()
+        if component is None or component == 'Return':
+            return
+        elif component == 'All':
+            part_db = None
+        else:
+            part_db = component
+        ipn_list = db.get_all_parts_by_keys(part_db, 'ipn')
         e7epd.label_making.export_barcodes(ipn_list, width, export)
-    elif to_do == '':
+    else:
         console.print("Not implemented ")
 
 
