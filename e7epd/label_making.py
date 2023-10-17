@@ -11,7 +11,13 @@ except ImportError:
     available = False
 else:
     available = True
-
+# Import my PyPTouch lib to potentially allow for direct printing to a barcode
+try:
+    import pyPTouch
+except ImportError:
+    direct_printing_available = False
+else:
+    direct_printing_available = True
 
 def _make_barcode(data: str, **writter_options) -> Image.Image:
     """Makes a barcode image"""
