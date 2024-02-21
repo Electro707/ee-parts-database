@@ -2,3 +2,5 @@ rich
 engineering_notation
 questionary
 pymongo
+pillow
+blabel

@@ -33,6 +33,7 @@ import re
 import warnings
 import argparse
 import tempfile
+import urllib.parse
 # Local Modules Import
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
@@ -127,7 +128,7 @@ class CLIConfig:
             # todo: enable socket connection
             ssl_on = db_conf['ssl']
             if db_conf['auth']:
-                conn_str = f"mongodb://{db_conf['username']}:{db_conf['password']}@{db_conf['db_host']}:27017/"
+                conn_str = f"mongodb://{urllib.parse.quote(db_conf['username'])}:{urllib.parse.quote(db_conf['password'])}@{db_conf['db_host']}:27017/?authSource={db_conf['auth_db']}"
             else:
                 conn_str = f"mongodb://{db_conf['db_host']}:27017/"
             conn = pymongo.MongoClient(conn_str, serverSelectionTimeoutMS=1000*2, tls=ssl_on)
@@ -165,7 +166,7 @@ class CLIConfig:
     def save_database_as_postgress(self, database_name: str, username: str, password: str, db_name: str, host: str):
         raise DeprecationWarning("Removed in 0.7.0")
 
-    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str, authenticated: bool = False, ssl: bool = False):
+    def save_database_as_mongo(self, database_name: str, username: str, password: str, host: str, auth_db: str, authenticated: bool = False, ssl: bool = False):
         """
         Saves a database info as a Mongo
         Args:
@@ -179,6 +180,7 @@ class CLIConfig:
         self._save_database_generic(database_name, username, password, host)
         self.config.db_list[database_name]['type'] = 'mongodb'
         self.config.db_list[database_name]['auth'] = authenticated
+        self.config.db_list[database_name]['auth_db'] = auth_db
         self.config.db_list[database_name]['ssl'] = ssl
         self.save()
 
@@ -195,6 +197,7 @@ class CLIConfig:
             raise self.NoLastDBSelectionException()
         del self.config.db_list[database_name]
         self.save()
+
 
 class CLI:
     cli_revision = e7epd.__version__
@@ -213,6 +216,9 @@ class CLI:
     def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
+
+        if e7epd.label_making.direct_printing_available:
+            self.printer = e7epd.label_making.PrinterObject()
 
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
         self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
@@ -624,7 +630,15 @@ class CLI:
                     except KeyboardInterrupt:
                         console.print("Did not add part")
                         return
+            if self.printer.get_availability():
+                if questionary.confirm("Want to print IPN barcode?", auto_enter=False, default=True).ask():
+                    self.printer.open()
+                    e7epd.label_making.print_barcodes([new_part['ipn']], self.printer)
+                    self.printer.printer.wait_for_print()
+                    self.printer.close()
+            # todo: move this above print function. is here to test above function
             self.db.add_new_part(part_type, new_part)
+
         except KeyboardInterrupt:
             console.print("\nOk, no part is added")
             return
@@ -833,6 +847,57 @@ class CLI:
             part_db = component
         return part_db
 
+    def print_export_barcode(self):
+        def isfloat(num):
+            try:
+                float(num)
+                return True
+            except ValueError:
+                return False
+
+        direct_print = False
+        if e7epd.label_making.direct_printing_available:
+            r = questionary.select("Choose whether you want to export to directly print", choices=['Print to PTouch', 'Export to PDF']).ask()
+            if r is None:
+                return
+            if 'Print' in r:
+                direct_print = True
+        else:
+            console.print("Cannot directly print to printer, choosing export to pdf")
+
+        if direct_print:
+            if not self.printer.get_availability():
+                console.print("Unable to connect to a PTouch printer, reverting to export mode")
+                direct_print = False
+
+        width = None
+        if not direct_print:
+            export_path = questionary.path("Select the pdf export path and name", default=os.getcwd() + '/').ask()
+            if export_path is None or export_path == "":
+                return
+            export_path = os.path.abspath(export_path)
+            if os.path.isdir(export_path):
+                console.print("Selected path is a folder")
+                return
+
+            width = questionary.text("What is the tape size in mm (printable area)", validate=isfloat).ask()
+            if width is None or width == "":
+                return
+            width = float(width)
+
+        try:
+            part_db, ipn = self.get_partdb_and_ipn(None, True)
+        except self._HelperFunctionExitError:
+            return
+
+        if direct_print:
+            self.printer.open()
+            e7epd.label_making.print_barcodes([ipn], self.printer)
+            self.printer.printer.wait_for_print()
+            self.printer.close()
+        else:
+            e7epd.label_making.export_barcodes([ipn], width, export_path)
+
     def wipe_database(self):
         do_delete = questionary.confirm("ARE YOU SURE???", auto_enter=False, default=False).ask()
         if do_delete is True:
@@ -899,9 +964,13 @@ class CLI:
                                        "Selected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
+                choices = ['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
+                 'Database Setting', 'Digikey API Settings']
+                if e7epd.label_making.available:
+                    choices += ['Print/Export Barcode']
+                choices += ['Exit']
                 to_do = questionary.select("Select the component you want do things with:",
-                                           choices=['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
-                                                    'Database Setting', 'Digikey API Settings', 'Exit'], use_shortcuts=True).ask()
+                                           choices=choices, use_shortcuts=True).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
@@ -929,6 +998,11 @@ class CLI:
                 elif to_do == 'Edit part':
                     try:
                         self.edit_part()
+                    except KeyboardInterrupt:
+                        continue
+                elif to_do == 'Print/Export Barcode':
+                    try:
+                        self.print_export_barcode()
                     except KeyboardInterrupt:
                         continue
                 # todo: This was here when the parts were in physically separate tables. Might no longer make sense?
@@ -961,11 +1035,13 @@ def ask_for_database(config: CLIConfig):
         username = questionary.text("What is the database username (Enter nothing for un-auth)?").unsafe_ask()
         if username == '':
             password = ''
+            auth_db = ''
             is_auth = False
         else:
             password = questionary.password("What is the database password?").unsafe_ask()
+            auth_db = questionary.text("What is the authentication database for above user").unsafe_ask()
             is_auth = True
-        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth, ssl=ssl)
+        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth, ssl=ssl, auth_db=auth_db)
         # try and get the database
         try:
             c = config.config.db_list[db_id_name]
@@ -976,6 +1052,7 @@ def ask_for_database(config: CLIConfig):
             raise KeyboardInterrupt()       # for now, can be improved later!
     return db_id_name
 
+
 def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
     def isfloat(num):
         try:
@@ -984,7 +1061,7 @@ def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
         except ValueError:
             return False
 
-    log = logging.getLogger('importer_app')
+    log = logging.getLogger('exporter_app')
 
     to_do = questionary.select("What export function you want?",
                                choices=['Export to CSV', 'Print IPN Barcode', 'Exit'], use_shortcuts=True).ask()
@@ -995,14 +1072,19 @@ def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
     db = e7epd.E7EPD(database_connection)
 
     if to_do == 'Print IPN Barcode':
+        # todo: add default path
+        export = questionary.path("Select the pdf export path and name", default=os.getcwd()+'/').ask()
+        if export is None or export == "":
+            return
+        export = os.path.abspath(export)
+        if os.path.isdir(export):
+            console.print("Selected path is a folder")
+            return
+
         width = questionary.text("What is the tape size in mm", validate=isfloat).ask()
         if width is None or width == "":
             return
         width = float(width)
-        # todo: add default path
-        export = questionary.path("Select the export path").ask()
-        if export is None or export == "":
-            return
 
         choice = [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'All')]))] + \
                  [questionary.Choice(title=i.showcase_name, value=i) for i in db.comp_types] + \
@@ -1178,6 +1260,7 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, impo
         except e7epd.InputException:
             log.exception(f"Unable to add part {part}")
 
+
 def setup_logger(is_debug: bool = False):
     l = logging.getLogger()
     l.setLevel(logging.DEBUG)
@@ -1198,7 +1281,7 @@ def setup_logger(is_debug: bool = False):
 def main():
     parser = argparse.ArgumentParser(description='E7EPD CLI Application')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
-    parser.add_argument('--import_csv', help='Run the importer utility with the given CSV', default=None)
+    parser.add_argument('--import_csv', help='Run the importer utility with the given CSV (not fully functional)', default=None)
     parser.add_argument('--export', action='store_true', help='Exports data in some what', default=None)
     args = parser.parse_args()
 
@@ -1253,6 +1336,8 @@ def main():
                 continue
             console.print("Done with migration :)")
             c.delete_database(old_sql_name)     # delete old sql db from name
+            c.config.last_db = new_db
+            c.save()
             continue
         # If we are not able to connect to the database for any reason!
         except c.DatabaseConnectionException:

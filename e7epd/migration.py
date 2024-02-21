@@ -29,6 +29,7 @@ else:
 
 default_string_len = 30
 
+
 class GenericItem(DeclarativeBase):
     mfr_part_numb = Column(String(default_string_len), nullable=False, primary_key=True, autoincrement=False)
     stock = Column(Integer, nullable=False)
@@ -50,6 +51,7 @@ class GenericItem(DeclarativeBase):
         ['datasheet', 'datasheet'],
         ['user', 'user'],
     ]
+
 
 class Resistor(GenericItem):
     __tablename__ = 'resistance'
@@ -83,6 +85,7 @@ class Capacitor(GenericItem):
         ['cap_type', 'cap_type'],
     ]
     db_type = 'capacitor'
+
 
 class Inductor(GenericItem):
     __tablename__ = 'inductor'
@@ -259,6 +262,7 @@ class MiscComp(GenericItem):
 
 all_components = [Resistor, Capacitor, Inductor, Diode, IC, Crystal, MOSFET, BJT, LED, Fuse, Connector, Button, MiscComp]
 
+
 def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
     """
     Updates the database to the most recent revision
@@ -301,6 +305,6 @@ def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
 
     # return
 
-    coll = mongo_conn['ee-parts-db']['parts']
+    coll = mongo_conn['ee_parts_db']['parts']
     coll.insert_many(all_new_parts)
     log.info("Done with migration!")

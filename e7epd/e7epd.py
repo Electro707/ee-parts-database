@@ -12,7 +12,8 @@ import typing
 import e7epd.e707pd_spec as spec
 
 # Version of the database spec
-database_spec_rev = '0.6-beta'
+database_spec_rev = '0.7-rc1'
+
 
 class InputException(Exception):
     """ Exception that gets raised on any input error """
@@ -74,7 +75,7 @@ class E7EPDConfigTable:
     """
     def __init__(self, db_conn: pymongo.database.Database):
         self.log = logging.getLogger('config')
-        self.coll = db_conn['e7epd_config']
+        self.coll = db_conn['config']
 
     def get(self, key: str) -> typing.Union[str, None]:
         d = self.coll.find_one({'key': key})
@@ -125,7 +126,7 @@ class E7EPD:
         self.log = logging.getLogger('E7EPD')
         self.db_client = db_client              # Store the connection engine
 
-        self.db = self.db_client['ee-parts-db']       # The database itself
+        self.db = self.db_client['ee_parts_db']       # The database itself
 
         # The config table in the database
         self.config = E7EPDConfigTable(self.db)
