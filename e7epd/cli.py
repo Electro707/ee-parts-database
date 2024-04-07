@@ -28,6 +28,7 @@ import typing
 import json
 import pymongo
 import pymongo.errors
+import pymongo.database
 import pkg_resources
 import re
 import warnings
@@ -94,7 +95,7 @@ class CLIConfig:
             json.dump(dataclasses.asdict(self.config), f, indent=4)
 
     @CLIConfig_config_db_list_checker
-    def get_database_connection(self, database_name: str = None) -> pymongo.MongoClient:
+    def get_database_connection(self, database_name: str = None) -> pymongo.database.Database:
         """
         Gets a database connection based off the database name.
 
@@ -115,7 +116,7 @@ class CLIConfig:
 
         return self.get_database_client(db_conf)
 
-    def get_database_client(self, db_conf: dict):
+    def get_database_client(self, db_conf: dict) -> pymongo.database.Database:
         """
         This function just returns the client, without any of the config checking.
 
@@ -132,6 +133,7 @@ class CLIConfig:
             else:
                 conn_str = f"mongodb://{db_conf['db_host']}:27017/"
             conn = pymongo.MongoClient(conn_str, serverSelectionTimeoutMS=1000*2, tls=ssl_on)
+            db = conn[db_conf['auth_db']]
             try:
                 # The ping command is cheap and does not require auth.
                 conn.admin.command('ping')
@@ -141,7 +143,7 @@ class CLIConfig:
             except pymongo.errors.OperationFailure:
                 self.log.exception("OperationFailure going to database")
                 raise self.DatabaseConnectionException()
-            return conn
+            return db
 
     @CLIConfig_config_db_list_checker
     def get_database_connection_info(self, database_name: str = None) -> dict:
@@ -213,7 +215,7 @@ class CLI:
             self.dk_info = dk_info
             super().__init__()
 
-    def __init__(self, config: CLIConfig, database_connection: pymongo.MongoClient):
+    def __init__(self, config: CLIConfig, database_connection: pymongo.database.Database):
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
@@ -1032,14 +1034,13 @@ def ask_for_database(config: CLIConfig):
     if is_server == 'mongoDb':
         host = questionary.text("What is the database host?").unsafe_ask()
         ssl = questionary.confirm("Will the server be connected with SSL/TSL?", auto_enter=False, default=False).unsafe_ask()
+        auth_db = questionary.text("What is the database name you want to use (and auth database of authenticating if setup?)").unsafe_ask()
         username = questionary.text("What is the database username (Enter nothing for un-auth)?").unsafe_ask()
         if username == '':
             password = ''
-            auth_db = ''
             is_auth = False
         else:
             password = questionary.password("What is the database password?").unsafe_ask()
-            auth_db = questionary.text("What is the authentication database for above user").unsafe_ask()
             is_auth = True
         config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth, ssl=ssl, auth_db=auth_db)
         # try and get the database
@@ -1053,7 +1054,7 @@ def ask_for_database(config: CLIConfig):
     return db_id_name
 
 
-def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
+def exporter_app(conf: CLIConfig, database_connection: pymongo.database.Database):
     def isfloat(num):
         try:
             float(num)
@@ -1102,7 +1103,7 @@ def exporter_app(conf: CLIConfig, database_connection: pymongo.MongoClient):
         console.print("Not implemented ")
 
 
-def importer_app(conf: CLIConfig, database_connection: pymongo.MongoClient, import_file: str):
+def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database, import_file: str):
     """
     An importer sub-application that imports an existing "database" from a CSV file
 
@@ -1301,8 +1302,7 @@ def main():
                 ask_for_database(c)
             except KeyboardInterrupt:
                 console.print("No database given. Exiting")
-                sys.exit(-1)
-        # if there wasn't a default/last database selected
+                return
         except c.NoLastDBSelectionException:
             db_name = questionary.select("A database was not selected last time. Please select which database to connect to", choices=c.get_stored_db_names()).ask()
             if db_name is None:
@@ -1315,7 +1315,7 @@ def main():
             if not migration.old_sql_available:
                 console.print("The migration tool cannot import sqlachemy. Run this with -v to see detailed logs")
                 sys.exit(-1)
-            if questionary.confirm("Database is too old, migrate?").ask() is not True:
+            if questionary.confirm("Database is too old, add mongoDb server?").ask() is not True:
                 console.print("Exiting")
                 sys.exit(-1)
             old_sql_name = c.config.last_db
@@ -1327,14 +1327,15 @@ def main():
                 sys.exit(-1)
 
             new_db_conn = c.get_database_connection(new_db)
-            try:
-                migration.update_06_to_07(new_db_conn, e.args[1])
-            except Exception as e:
-                logging.exception("Error then importing")
-                console.print("Other exception happened :(. See logs above")
-                c.delete_database(new_db)
-                continue
-            console.print("Done with migration :)")
+            if questionary.confirm("Want to migrate old data from the sql to mongo db?").ask():
+                try:
+                    migration.update_06_to_07(new_db_conn, e.args[1])
+                except Exception as e:
+                    logging.exception("Error then importing")
+                    console.print("Other exception happened :(. See logs above")
+                    c.delete_database(new_db)
+                    continue
+                console.print("Done with migration :)")
             c.delete_database(old_sql_name)     # delete old sql db from name
             c.config.last_db = new_db
             c.save()
@@ -1342,7 +1343,7 @@ def main():
         # If we are not able to connect to the database for any reason!
         except c.DatabaseConnectionException:
             console.print("Unable to connect to database")
-            sys.exit(-1)
+            return
 
     if args.import_csv is not None:
         importer_app(c, db_conn, args.import_csv)

@@ -122,11 +122,10 @@ class E7EPD:
         spec.Others
     ]
 
-    def __init__(self, db_client: pymongo.MongoClient):
+    def __init__(self, db_client: pymongo.database.Database):
         self.log = logging.getLogger('E7EPD')
-        self.db_client = db_client              # Store the connection engine
 
-        self.db = self.db_client['ee_parts_db']       # The database itself
+        self.db = db_client
 
         # The config table in the database
         self.config = E7EPDConfigTable(self.db)
@@ -191,7 +190,7 @@ class E7EPD:
             pcb_data: The PCB info to add to the database
 
         Raises:
-            InputException: If the given `pcb_data` input has something invalid about it.
+            InputException: If the given :func`pcb_data` input has something invalid about it.
                             See specific exception message as to what
 
         """

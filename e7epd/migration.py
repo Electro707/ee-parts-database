@@ -263,7 +263,7 @@ class MiscComp(GenericItem):
 all_components = [Resistor, Capacitor, Inductor, Diode, IC, Crystal, MOSFET, BJT, LED, Fuse, Connector, Button, MiscComp]
 
 
-def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
+def update_06_to_07(mongo_conn: pymongo.database.Database, sql_info: dict):
     """
     Updates the database to the most recent revision
     """
@@ -305,6 +305,6 @@ def update_06_to_07(mongo_conn: pymongo.MongoClient, sql_info: dict):
 
     # return
 
-    coll = mongo_conn['ee_parts_db']['parts']
+    coll = mongo_conn['parts']
     coll.insert_many(all_new_parts)
     log.info("Done with migration!")

@@ -1,4 +1,4 @@
-.. module:: e7epd
+_.. module:: e7epd
 
 API Reference
 ==========================================
