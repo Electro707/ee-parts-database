@@ -2,27 +2,26 @@ import logging
 import typing
 import os
 import re
-import PIL.Image
-
 try:
+    import PIL.Image
     from blabel import label_tools
     from blabel import LabelWriter
     from PIL import Image
     import barcode as python_barcode
     # from weasyprint import CSS
     import cairosvg
-except ImportError:
-    available = False
+except ImportError as e:
+    available = e
 else:
-    available = True
+    available = None
 # Import my PyPTouch lib to potentially allow for direct printing to a barcode
 try:
     import pyPTouch
 except ImportError as e:
     # todo: log reason
-    direct_printing_available = False
+    direct_printing_failed = e
 else:
-    direct_printing_available = True
+    direct_printing_failed = None
 
 
 class PrinterObject:

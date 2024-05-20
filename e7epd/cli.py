@@ -13,6 +13,7 @@ import rich
 import rich.console
 import rich.panel
 import rich.pretty
+import rich.text
 from rich.prompt import Prompt
 from rich.logging import RichHandler
 import rich.table
@@ -35,6 +36,7 @@ import warnings
 import argparse
 import tempfile
 import urllib.parse
+from prompt_toolkit.formatted_text import FormattedText
 # Local Modules Import
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
@@ -219,7 +221,7 @@ class CLI:
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
-        if e7epd.label_making.direct_printing_available:
+        if e7epd.label_making.direct_printing_failed is None:
             self.printer = e7epd.label_making.PrinterObject()
 
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
@@ -857,15 +859,19 @@ class CLI:
             except ValueError:
                 return False
 
+        if e7epd.label_making.available is not None:
+            console.print(f"Cannot make barcodes (due to \"{e7epd.label_making.available}\")")
+            return
+
         direct_print = False
-        if e7epd.label_making.direct_printing_available:
+        if e7epd.label_making.direct_printing_failed is None:
             r = questionary.select("Choose whether you want to export to directly print", choices=['Print to PTouch', 'Export to PDF']).ask()
             if r is None:
                 return
             if 'Print' in r:
                 direct_print = True
         else:
-            console.print("Cannot directly print to printer, choosing export to pdf")
+            console.print(f"Cannot directly print to printer, choosing export to pdf (due to \"{e7epd.label_making.direct_printing_failed}\")")
 
         if direct_print:
             if not self.printer.get_availability():
@@ -967,9 +973,11 @@ class CLI:
         try:
             while 1:
                 choices = ['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
-                 'Database Setting', 'Digikey API Settings']
-                if e7epd.label_making.available:
+                           'Database Setting', 'Digikey API Settings']
+                if e7epd.label_making.available is None:
                     choices += ['Print/Export Barcode']
+                else:
+                    choices += [questionary.Choice(title=prompt_toolkit.HTML('<strike>Print/Export Barcode</strike>').formatted_text)]
                 choices += ['Exit']
                 to_do = questionary.select("Select the component you want do things with:",
                                            choices=choices, use_shortcuts=True).ask()
@@ -1054,53 +1062,47 @@ def ask_for_database(config: CLIConfig):
     return db_id_name
 
 
+# def print_barcodes(conf: CLIConfig, database_connection: pymongo.database.Database):
+#     def isfloat(num):
+#         try:
+#             float(num)
+#             return True
+#         except ValueError:
+#             return False
+#
+#     db = e7epd.E7EPD(database_connection)
+#
+#     export = questionary.path("Select the pdf export path and name", default=os.getcwd() + '/').ask()
+#     if export is None or export == "":
+#         return
+#     export = os.path.abspath(export)
+#     if os.path.isdir(export):
+#         console.print("Selected path is a folder")
+#         return
+#
+#     width = questionary.text("What is the tape size in mm", validate=isfloat).ask()
+#     if width is None or width == "":
+#         return
+#     width = float(width)
+#
+#     choice = [questionary.Choice(title=FormattedText([('blue', 'All')]))] + \
+#              [questionary.Choice(title=i.showcase_name, value=i) for i in db.comp_types] + \
+#              [questionary.Choice(title=FormattedText([('green', 'Return')]))]
+#     component = questionary.select("Select the component you want do things with:", choices=choice).ask()
+#     if component is None or component == 'Return':
+#         return
+#     elif component == 'All':
+#         part_db = None
+#     else:
+#         part_db = component
+#     ipn_list = db.get_all_parts_by_keys(part_db, 'ipn')
+#     e7epd.label_making.export_barcodes(ipn_list, width, export)
+
+
 def exporter_app(conf: CLIConfig, database_connection: pymongo.database.Database):
-    def isfloat(num):
-        try:
-            float(num)
-            return True
-        except ValueError:
-            return False
-
-    log = logging.getLogger('exporter_app')
-
-    to_do = questionary.select("What export function you want?",
-                               choices=['Export to CSV', 'Print IPN Barcode', 'Exit'], use_shortcuts=True).ask()
-    if to_do is None or to_do == 'Exit':
-        console.print("Exiting!")
-        return
-
-    db = e7epd.E7EPD(database_connection)
-
-    if to_do == 'Print IPN Barcode':
-        # todo: add default path
-        export = questionary.path("Select the pdf export path and name", default=os.getcwd()+'/').ask()
-        if export is None or export == "":
-            return
-        export = os.path.abspath(export)
-        if os.path.isdir(export):
-            console.print("Selected path is a folder")
-            return
-
-        width = questionary.text("What is the tape size in mm", validate=isfloat).ask()
-        if width is None or width == "":
-            return
-        width = float(width)
-
-        choice = [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'All')]))] + \
-                 [questionary.Choice(title=i.showcase_name, value=i) for i in db.comp_types] + \
-                 [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))]
-        component = questionary.select("Select the component you want do things with:", choices=choice).ask()
-        if component is None or component == 'Return':
-            return
-        elif component == 'All':
-            part_db = None
-        else:
-            part_db = component
-        ipn_list = db.get_all_parts_by_keys(part_db, 'ipn')
-        e7epd.label_making.export_barcodes(ipn_list, width, export)
-    else:
-        console.print("Not implemented ")
+    # log = logging.getLogger('exporter_app')
+    # db = e7epd.E7EPD(database_connection)
+    console.print("Not implemented ")
 
 
 def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database, import_file: str):
@@ -1148,8 +1150,8 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
             for i, h in enumerate(header):
                 choices = [questionary.Choice(title=f"{v.showcase_name} (Required)" if v.required else f"{v.showcase_name}", value=i) for i, v in e7epd.spec.BasePartItems.items() if i not in column_to_key.values()]
                 if 'type' not in column_to_key.values():
-                    choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Part Type (Required)')]), value='type')]
-                choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None/Other')]), value='None')]
+                    choices += [questionary.Choice(title=FormattedText([('blue', 'Part Type (Required)')]), value='type')]
+                choices += [questionary.Choice(title=FormattedText([('orange', 'None/Other')]), value='None')]
                 a = questionary.select(f"What database key matches the column {i} ({h})?", choices=choices).unsafe_ask()
                 if a == 'None':
                     a = None
@@ -1283,7 +1285,7 @@ def main():
     parser = argparse.ArgumentParser(description='E7EPD CLI Application')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
     parser.add_argument('--import_csv', help='Run the importer utility with the given CSV (not fully functional)', default=None)
-    parser.add_argument('--export', action='store_true', help='Exports data in some what', default=None)
+    parser.add_argument('--export', action='store_true', help='Exports data in a csv or json format', default=None)
     args = parser.parse_args()
 
     setup_logger(args.verbose)
