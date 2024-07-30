@@ -211,11 +211,11 @@ class CLI:
             self.extra_data = data
             super().__init__()
 
-    class _ChooseComponentDigikeyBarcode(Exception):
-        def __init__(self, mfg_part_number: str, dk_info: dict):
-            self.mfg_part_number = mfg_part_number
-            self.dk_info = dk_info
-            super().__init__()
+    # class _ChooseComponentDigikeyBarcode(Exception):
+    #     def __init__(self, mfg_part_number: str, dk_info: dict):
+    #         self.mfg_part_number = mfg_part_number
+    #         self.dk_info = dk_info
+    #         super().__init__()
 
     def __init__(self, config: CLIConfig, database_connection: pymongo.database.Database):
         self.db = e7epd.E7EPD(database_connection)
@@ -225,7 +225,7 @@ class CLI:
             self.printer = e7epd.label_making.PrinterObject()
 
         self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
-        self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
+        # self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
 
     @staticmethod
     def find_spec_by_db_name(spec_list: typing.Dict[str, e7epd.spec.SpecLineItem], db_name: str) -> e7epd.spec.SpecLineItem:
@@ -260,15 +260,14 @@ class CLI:
             console.print("[red]Must have an IPN[/]")
             raise self._HelperFunctionExitError()
 
-        ipn_entered = ipn_entered.strip()
-        ipn_entered = ipn_entered.upper()
+        ipn_entered = ipn_entered.strip().upper()
 
-        if ipn_entered.startswith('[)>'):
-            try:
-                # todo: fix this, as it currently won't work this way
-                mfr_part_numb, p = self.dk.scan_digikey_barcode(ipn_entered)
-            except KeyboardInterrupt:
-                raise self._HelperFunctionExitError()
+        # if ipn_entered.startswith('[)>'):
+        #     try:
+        #         # todo: fix this, as it currently won't work this way
+        #         mfr_part_numb, p = self.dk.scan_digikey_barcode(ipn_entered)
+        #     except KeyboardInterrupt:
+        #         raise self._HelperFunctionExitError()
 
         if must_already_exist is True:
             if ipn_entered not in existing_ipn_list:
@@ -294,8 +293,7 @@ class CLI:
                 console.print("Selecting current IPN as MGF part number")
                 return current_ipn
 
-        mfr_part_numb = mfr_part_numb.strip()
-        mfr_part_numb = mfr_part_numb.upper()
+        mfr_part_numb = mfr_part_numb.strip().upper()
 
         return mfr_part_numb
 
@@ -386,7 +384,7 @@ class CLI:
 
     def print_all_parts(self, part_type: e7epd.spec.PartSpec):
         """ Prints all parts in the database per given type """
-        parts_list = self.db.get_all_parts(part_type)
+        parts_list = self.db.get_parts(part_type)
         self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
     def print_filtered_parts(self, part_type: e7epd.spec.PartSpec):
@@ -420,7 +418,7 @@ class CLI:
                     return
             search_filter.append(e7epd.SpecWithOperator(key=s, val=inp, operator=op))
         try:
-            parts_list = self.db.get_sorted_parts(part_type, search_filter)
+            parts_list = self.db.get_parts(part_type, search_filter)
         except e7epd.EmptyInDatabase:
             console.print("[red]No filtered parts in the database[/]")
             return
@@ -496,6 +494,8 @@ class CLI:
                         op = re.findall(r'\>=|\>|\<=|\<', inp)[0]
                         op = e7epd.ComparisonOperators(op)
                         inp = re.sub(r'\>=|\>|\<=|\<', "", inp)
+                if inp.lower().endswith(spec.units.lower()):       # remove the engineering unit if applicable
+                    inp = inp[:-len(spec.units)]
                 if spec.shows_as == ShowAsEnum.engineering:
                     try:
                         inp = EngNumber(inp)
@@ -793,7 +793,7 @@ class CLI:
                 all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], None))
             else:
                 for part in parts:
-                    all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], 'orange'))
+                    all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], 'yellow'))
 
         console.print("You currently have {:d} PCBs available".format(board['stock']))
 
@@ -972,14 +972,17 @@ class CLI:
                                        "Selected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
-                choices = ['Check components for PCB', 'Search Part', 'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
-                           'Database Setting', 'Digikey API Settings']
+                choices = ['Check components for PCB', 'Search Part',
+                           'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
+                           'Database Setting',
+                           # 'Digikey API Settings'
+                           ]
                 if e7epd.label_making.available is None:
                     choices += ['Print/Export Barcode']
                 else:
                     choices += [questionary.Choice(title=prompt_toolkit.HTML('<strike>Print/Export Barcode</strike>').formatted_text)]
                 choices += ['Exit']
-                to_do = questionary.select("Select the component you want do things with:",
+                to_do = questionary.select("Select what to do:",
                                            choices=choices, use_shortcuts=True).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()

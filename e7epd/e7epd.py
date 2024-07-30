@@ -235,9 +235,11 @@ class E7EPD:
         else:
             spec_search = []
             for k in part:
+                if part[k]['val'] is None:
+                    continue
                 spec_search.append(SpecWithOperator(key=k, val=part[k]['val'],
                                                     operator=ComparisonOperators(part[k]['op'])))
-            return self.get_sorted_parts(self.get_part_spec_by_db_name(part_type), spec_search)
+            return self.get_parts(self.get_part_spec_by_db_name(part_type), spec_search)
         return []
 
     def add_user(self, u: spec.UserSpec):
@@ -303,33 +305,33 @@ class E7EPD:
         d = self.part_coll.count_documents({'type': part_class.db_type_name})
         return d
 
-    def get_all_parts(self, part_class: typing.Union[spec.PartSpec, None]) -> typing.List[dict]:
+    def get_parts(self, part_class: spec.PartSpec,
+                  to_filter: typing.List[SpecWithOperator] = None) -> typing.List[dict]:
         """
-        Get all parts in the database , optionally filtering by the part type
+        Get parts in the database , optionally filtering by the part type
         Args:
             part_class: The part spec class, which is used to determine the type
+            to_filter: Optional list of `SpecWithOperator` or strings to filter by
 
         Returns: A dist of all part's data of the specific type
         """
         q = {}
         if part_class is not None:
             q['type'] = part_class.db_type_name
-        d = self.part_coll.find(q)
-        return list(d)
-
-    def get_sorted_parts(self, part_class: typing.Union[spec.PartSpec],
-                         to_filter: typing.List[SpecWithOperator]) -> typing.List[dict]:
-        q = {}
-        if part_class is not None:
-            q['type'] = part_class.db_type_name
         # Go through parts to filter
-        for f in to_filter:
-            if f.operator != ComparisonOperators.equal and type(f.val) is str:
-                raise InputException("Gave some comparison operator while input is a string")
-            if f.key not in part_class.items:
-                raise InputException(f"Input key of {f.key} is not part of the part class's spec")
-            q[f.key] = {operator_to_mongo_comp[f.operator]: f.val}
+        if to_filter:
+            for f in to_filter:
+                if f.operator != ComparisonOperators.equal and type(f.val) is str:
+                    raise InputException("Gave some comparison operator while input is a string")
+                if f.key not in part_class.items:
+                    raise InputException(f"Input key of {f.key} is not part of the part class's spec")
 
+                if type(f.val) is str:
+                    q[f.key] = {'$regex': f.val, '$options': 'i'}
+                else:
+                    q[f.key] = {operator_to_mongo_comp[f.operator]: f.val}
+
+        print(q)
         d = self.part_coll.find(q)
         return list(d)
 
@@ -344,7 +346,7 @@ class E7EPD:
         Returns: A list of all part's value per the given key
         """
         ret = []
-        d = self.get_all_parts(part_class)
+        d = self.get_parts(part_class)
         for d_i in d:
             if type(ret_key) is list:
                 ret.append({i: d_i[i] for i in ret_key})

@@ -94,6 +94,7 @@ Database Python DB Wrapper
 * v0.7.0 (beta):
     * Migration to MongoDb as the database backend instead of SQL-like DB
     * Added migration tool from SQL
+    * All string searches are regex-ed in order to help with a looser search critea
 
 
 CLI

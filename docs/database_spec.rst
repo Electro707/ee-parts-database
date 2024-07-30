@@ -29,8 +29,8 @@ Specification Notes
 Components
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-All components, when specified, will be based of the `_BasePartItems` spec that contains common keys.
-Note that the `_BasePartItems` spec doesn't exist by itself but is used in this document as keys that every
+All components, when specified, will be based of the `BasePartItems` spec that contains common keys.
+Note that the `BasePartItems` spec doesn't exist by itself but is used in this document as keys that every
 other part should have
 
 All components will have an extra key: `type`. This allows to quickly determine what part type is per document,
@@ -52,20 +52,20 @@ package       str                       YES         The part's physical package
 storage       str                                   The part's storage location
 comments      str                                   Comments about the part
 datasheet     str                                   The datasheet of the part
-user          dict                                  The part user's information
+user          str                                   The part user's information (who added the part for example)
 ============= ========================= =========== =======================================================
 
 Resistor Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Append the *GenericPart* items to this table.
-Type: ``resistance``
+Type: ``resistor``
 
 ============= ========================= =========== =======================================================
 Name          Variable Type             Required?   Description
 ============= ========================= =========== =======================================================
-resistance    FLOAT                     YES         The resistor's resistance
-tolerance     FLOAT                                 The resistor's tolerance as a float (so a 5% resistor will be stored as 5)
-power         FLOAT                                 The resistor's power rating in W
+resistance    float                     YES         The resistor's resistance
+tolerance     float                                 The resistor's tolerance as a float (so a 5% resistor will be stored as 5)
+power         float                                 The resistor's power rating in W
 ============= ========================= =========== =======================================================
 
 Capacitor Table
@@ -76,11 +76,11 @@ Table Name: ``capacitor``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-capacitance   FLOAT                     YES         The capacitor's capacitance
-tolerance     FLOAT                                 The capacitor's tolerance as a float (so a 5% capacitor will be stored as 5)
-voltage       FLOAT                                 The capacitor's maximum voltage rating
-temp_coeff    VARCHAR                               The capacitor's temperature coefficient
-cap_type      VARCHAR                               The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)
+capacitance   float                     YES         The capacitor's capacitance
+tolerance     float                                 The capacitor's tolerance as a float (so a 5% capacitor will be stored as 5)
+voltage       float                                 The capacitor's maximum voltage rating
+temp_coeff    str                                   The capacitor's temperature coefficient
+cap_type      str                                   The capacitor types, which should only be 'electrolytic', 'ceramic', 'tantalum', 'film'. If a type is not listed, you can enter a custom type, just make sure that it's consistent for different parts (also create an Issue on the Github page so we can all have it :)
 ============= ========================= =========== =======================================================
 
 Inductor Table
@@ -91,9 +91,9 @@ Table Name: ``inductor``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-inductance    FLOAT                     YES         The inductance of the inductor
-tolerance     FLOAT                                 The inductor's tolerance as a float (so a 5% inductor will be stored as 5)
-max_current   FLOAT                                 The inductor's maximum current
+inductance    float                     YES         The inductance of the inductor
+tolerance     float                                 The inductor's tolerance as a float (so a 5% inductor will be stored as 5)
+max_current   float                                 The inductor's maximum current
 ============= ========================= =========== =======================================================
 
 Diode Table
@@ -104,10 +104,10 @@ Table Name: ``diode``
 ================= ========================= =========== =======================================================
 Name              SQL Type                  Required?   Description
 ================= ========================= =========== =======================================================
-diode_type        VARCHAR                   YES         Diode Type (Regular, Zener, Schottky, etc)
-max_current       FLOAT                                 Max/Peak Current
-average_current   FLOAT                                 Average Current Rating
-max_rv            FLOAT                                 Max reverse voltage
+diode_type        str                       YES         Diode Type (Regular, Zener, Schottky, etc)
+max_current       float                                 Max/Peak Current
+average_current   float                                 Average Current Rating
+max_rv            float                                 Max reverse voltage
 ================= ========================= =========== =======================================================
 
 IC Table
@@ -118,7 +118,7 @@ Table Name: ``ic``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-ic_type       VARCHAR                   YES         The IC type, for example microcontroller, ADC, comparator, etc.
+ic_type       str                       YES         The IC type, for example microcontroller, ADC, comparator, etc.
 ============= ========================= =========== =======================================================
 
 Crystal Table
@@ -129,10 +129,10 @@ Table Name: ``crystal``
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
 =============== =========================== =========== =======================================================
-frequency       FLOAT                       YES         The frequency of the crystal
-load_c          FLOAT                                   The load capacitance (in pF) of the crystal
-esr             FLOAT                                   The ECR (in Ohms) of the crystal
-stability_ppm   FLOAT                                   The stability (in ppm) of the crystal
+frequency       float                       YES         The frequency of the crystal
+load_c          float                                   The load capacitance (in pF) of the crystal
+esr             float                                   The ECR (in Ohms) of the crystal
+stability_ppm   float                                   The stability (in ppm) of the crystal
 =============== =========================== =========== =======================================================
 
 FET Spec
@@ -143,12 +143,12 @@ Table Name: ``fet``
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
 =============== =========================== =========== =======================================================
-fet_type        VARCHAR                     YES         The MOSFET type (N-Channel or P-Channel)
-vds             FLOAT                                   The max Drain-Source voltage of the FET
-vgs             FLOAT                                   The max Gate-Source voltage of the FET
-vgs_th          FLOAT                                   The Gate-Source threshold voltage of the FET
-i_d             FLOAT                                   The max continuous drain current of the FET
-i_d_pulse       FLOAT                                   The max pulsed/peak drain current of the FET
+fet_type        str                         YES         The MOSFET type (N-Channel or P-Channel)
+vds             float                                   The max Drain-Source voltage of the FET
+vgs             float                                   The max Gate-Source voltage of the FET
+vgs_th          float                                   The Gate-Source threshold voltage of the FET
+i_d             float                                   The max continuous drain current of the FET
+i_d_pulse       float                                   The max pulsed/peak drain current of the FET
 =============== =========================== =========== =======================================================
 
 BJT Table
@@ -159,12 +159,12 @@ Table Name: ``bjt``
 =============== =========================== =========== =======================================================
 Name            SQL Type                    Required?   Description
 =============== =========================== =========== =======================================================
-bjt_type        VARCHAR                     YES         The BJT type (NPN or PNP)
-vcbo            FLOAT                                   The max Collector-Base voltage of the BJT
-vceo            FLOAT                                   The max Collector-Emitter voltage of the BJT
-vebo            FLOAT                                   The max Emitter-Base voltage of the BJT
-i_c             FLOAT                                   The max continuous collector current of the BJT
-i_c_peak        FLOAT                                   The max pulsed/peak collector current of the BJT
+bjt_type        str                         YES         The BJT type (NPN or PNP)
+vcbo            float                                   The max Collector-Base voltage of the BJT
+vceo            float                                   The max Collector-Emitter voltage of the BJT
+vebo            float                                   The max Emitter-Base voltage of the BJT
+i_c             float                                   The max continuous collector current of the BJT
+i_c_peak        float                                   The max pulsed/peak collector current of the BJT
 =============== =========================== =========== =======================================================
 
 Connector Table
@@ -175,7 +175,7 @@ Table Name: ``connector``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-conn_type     VARCHAR                   YES         The connector type (Banana, Rect. Header, Test point, etc)
+conn_type     str                       YES         The connector type (Banana, Rect. Header, Test point, etc)
 ============= ========================= =========== =======================================================
 
 LED Table
@@ -186,9 +186,9 @@ Table Name: ``led``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-led_type      VARCHAR                   YES         The LED's color (Red, Blue, RGB, etc)
-vf            FLOAT                                 The LED's forward voltage
-max_i         FLOAT                                 The LED's maximum forward current
+led_type      str                       YES         The LED's color (Red, Blue, RGB, etc)
+vf            float                                 The LED's forward voltage
+max_i         float                                 The LED's maximum forward current
 ============= ========================= =========== =======================================================
 
 Fuse Table
@@ -199,11 +199,11 @@ Type: ``fuse``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-fuse_type     VARCHAR                   YES         The fuse type (Glass, PTC, etc)
-max_v         FLOAT                                 The fuse's max voltage
-max_i         FLOAT                                 The fuse's absolute maximum current
-trip_i        FLOAT                                 The fuse's trip current
-hold_i        FLOAT                                 The fuse's hold current
+fuse_type     str                       YES         The fuse type (Glass, PTC, etc)
+max_v         float                                 The fuse's max voltage
+max_i         float                                 The fuse's absolute maximum current
+trip_i        float                                 The fuse's trip current
+hold_i        float                                 The fuse's hold current
 ============= ========================= =========== =======================================================
 
 Button/Switch Table
@@ -214,10 +214,10 @@ Type: ``button``
 ============= ========================= =========== =======================================================
 Name          SQL Type                  Required?   Description
 ============= ========================= =========== =======================================================
-bt_type       VARCHAR                   YES         The button/switch type (Tactile, Rocker, etc)
-circuit_t     VARCHAR                               The button/switch's configuration (SPDT, SPST-NO, etc)
-max_v         FLOAT                                 The button/switch's max voltage
-max_i         FLOAT                                 The button/switch's absolute maximum current
+bt_type       str                       YES         The button/switch type (Tactile, Rocker, etc)
+circuit_t     str                                   The button/switch's configuration (SPDT, SPST-NO, etc)
+max_v         float                                 The button/switch's max voltage
+max_i         float                                 The button/switch's absolute maximum current
 ============= ========================= =========== =======================================================
 
 Misc Table

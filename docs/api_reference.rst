@@ -23,7 +23,8 @@ Python Documentation
 Autofill Helpers
 ++++++++++++++++++++++++
 
-This wrapper module also comes with some autofill helpers. All are in the dictionary ``autofill_helpers_list``.
+This wrapper module also comes with some autofill helpers.
+All are in the dictionary ``autofill_helpers_list`` in ``e707pd_spec.py``
 Here are the current autofill helpers available:
 
 * ``ic_manufacturers``: IC manufacturers like TI and Cypress

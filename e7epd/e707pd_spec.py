@@ -18,13 +18,14 @@ class UnicodeCharacters(enum.Enum):
     Omega = '\u03A9'
     mu = '\u03BC'
 
+
 @dataclasses.dataclass
 class SpecLineItem:
     showcase_name: str      # How to showcase this line item to the user
     shows_as: ShowAsEnum    # How to display it to user
     input_type: type        # What Python type to use
     required: bool          # Is this item required?
-    append_str: str = ""    # What to append to this (units) when displayed
+    units: str = ""         # What to append to this (units) when displayed
     # The key for a part spec will be the db_name, thus it is not needed
     # db_name: str            # how this gets stored in the database
 
