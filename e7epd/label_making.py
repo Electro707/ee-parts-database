@@ -1,25 +1,27 @@
+import io
 import logging
 import typing
 import os
 import re
 try:
     import PIL.Image
-    from blabel import label_tools
-    from blabel import LabelWriter
+    # from blabel import label_tools
+    # from blabel import LabelWriter
     from PIL import Image
     import barcode as python_barcode
-    # from weasyprint import CSS
     import cairosvg
+    import pypdf
 except ImportError as e:
     available = e
+    """available is None if printing is available, otherwise it will be the import exception"""
 else:
     available = None
 # Import my PyPTouch lib to potentially allow for direct printing to a barcode
 try:
     import pyPTouch
 except ImportError as e:
-    # todo: log reason
     direct_printing_failed = e
+    """direct_printing_failed is None if printing is available directly to a PTouch Printer, otherwise it will be the import exception"""
 else:
     direct_printing_failed = None
 
@@ -86,40 +88,35 @@ def _make_barcode(data: str, **writter_options) -> bytes:
 #     label_writer = LabelWriter(item_template_path=html_path, default_stylesheets=(css, ))
 #     return label_writer.write_labels(records, target=None)
 
-def generate_barcodes(ipns: typing.List[str], label_width: float) -> bytes:
+def generate_barcode(ipn: str, label_width: float) -> bytes:
     """
     Generates a barcode svg
     Args:
-        ipns: The part numbers to print
+        ipn: The part numbers to print
         label_width: The label width, in mm
 
     Notes:
         This function assumes a 180 DPI printer
     """
-    # todo: add multiple IPNs support
-    records = [{'ipn': i} for i in ipns]
-    for i, r in enumerate(records):
-        # img = _make_barcode(r['ipn'], module_height=label_width, module_width=0.2, text_distance=label_width/2, font_size=label_width, dpi=128, margin_bottom=-0.15*label_width)
-        # img = _make_barcode(r['ipn'], module_height=label_width-3, module_width=0.1411, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0, quiet_zone=0)
-        img = _make_barcode(r['ipn'], module_height=label_width-3, module_width=(1/(180/25.4))*1, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0, quiet_zone=0)
-        # img = img.decode()
+    # img = _make_barcode(r['ipn'], module_height=label_width, module_width=0.2, text_distance=label_width/2, font_size=label_width, dpi=128, margin_bottom=-0.15*label_width)
+    # img = _make_barcode(r['ipn'], module_height=label_width-3, module_width=0.1411, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0, quiet_zone=0)
+    img = _make_barcode(ipn, module_height=label_width-3, module_width=(1/(180/25.4))*1, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0, quiet_zone=0)
+    # img = img.decode()
 
-        # thanks chatgpt
-        i = img.decode()
-        i = re.sub(r'<svg([^>]*)height="([\d\.]+)(mm"[^>]*)>',
-                   f'<svg\\1height="{label_width}\\3>', i)
+    # thanks chatgpt
+    i = img.decode()
+    i = re.sub(r'<svg([^>]*)height="([\d\.]+)(mm"[^>]*)>',
+               f'<svg\\1height="{label_width}\\3>', i)
 
-        img = i.encode('utf-8')
+    img = i.encode('utf-8')
 
-        return img
+    return img
 
 
 def export_barcodes(ipns: typing.List[str], label_width: float, export_path: str):
     """
     Function to give multiple IPN (or other data) to, and exports them as a PDF file containing multiple
     pages for each IPN given
-
-    todo: multiple IPNs support
 
     Args:
         ipns: A list of IPNs (or other data) to convert into barcodes
@@ -129,23 +126,34 @@ def export_barcodes(ipns: typing.List[str], label_width: float, export_path: str
     if not export_path.endswith('.pdf'):
         export_path += '.pdf'
 
-    svgs = generate_barcodes(ipns, label_width)
-    pdfs = cairosvg.svg2pdf(bytestring=svgs)
-    with open(export_path, 'wb') as f:
-        f.write(pdfs)
+    merger = pypdf.PdfWriter()
+
+    for i in ipns:
+        svg = generate_barcode(i, label_width)
+        pdf = cairosvg.svg2pdf(bytestring=svg)
+        merger.append(io.BytesIO(pdf))
+    merger.write(export_path)
+    merger.close()
 
 
 def print_barcodes(ipns: typing.List[str], printer: PrinterObject):
+    """
+    Blocking function that will print out a barcode per each part number in the list
+    Args:
+        ipns: A list of part numbers to print out
+        printer: The printer object to use
+    """
     label_width = printer.get_current_tape_width()
     # assuming 180SPI, for brother printers
     label_width = (label_width / 180) * 25.4
 
     # end = False
     for i, ip in enumerate(ipns):
-        svgs = generate_barcodes(ipns, label_width)
+        svgs = generate_barcode(ip, label_width)
         # if i == len(ipns)-1:
         #     end = True
         printer.printer.print_svg(svgs, False)
+        printer.printer.wait_for_print()
 
 
 if __name__ == "__main__":
@@ -156,9 +164,10 @@ if __name__ == "__main__":
     # testing if this file is ran directly
     logging.basicConfig(level=logging.DEBUG)
     w = 12
-    data = ['RMCF0603FT10K0']
+    data = ['RMCF0603FT10K0', 'abc']
     # data.append("SMALL")
-    # export_barcodes(data, w, 'test.pdf')
+    export_barcodes(data, w, 'test.pdf')
+    sys.exit(1)
     pdfs = generate_barcodes(data, w)
     with open('test.svg', 'wb') as f:
         f.write(pdfs)

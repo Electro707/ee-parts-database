@@ -3,12 +3,11 @@
     E707PD Python CLI Application
     Rev 0.7
 """
-import dataclasses
 # External Modules Import
-import subprocess
+import csv
+import dataclasses
 import logging
 import logging.handlers
-import importlib
 import rich
 import rich.console
 import rich.panel
@@ -34,7 +33,6 @@ import pkg_resources
 import re
 import warnings
 import argparse
-import tempfile
 import urllib.parse
 from prompt_toolkit.formatted_text import FormattedText
 # Local Modules Import
@@ -262,13 +260,6 @@ class CLI:
 
         ipn_entered = ipn_entered.strip().upper()
 
-        # if ipn_entered.startswith('[)>'):
-        #     try:
-        #         # todo: fix this, as it currently won't work this way
-        #         mfr_part_numb, p = self.dk.scan_digikey_barcode(ipn_entered)
-        #     except KeyboardInterrupt:
-        #         raise self._HelperFunctionExitError()
-
         if must_already_exist is True:
             if ipn_entered not in existing_ipn_list:
                 console.print("[red]Part must already exist in the database[/]")
@@ -416,6 +407,7 @@ class CLI:
                 except KeyboardInterrupt:
                     console.print("Canceled part lookup")
                     return
+            print(s, inp, op)
             search_filter.append(e7epd.SpecWithOperator(key=s, val=inp, operator=op))
         try:
             parts_list = self.db.get_parts(part_type, search_filter)
@@ -494,8 +486,9 @@ class CLI:
                         op = re.findall(r'\>=|\>|\<=|\<', inp)[0]
                         op = e7epd.ComparisonOperators(op)
                         inp = re.sub(r'\>=|\>|\<=|\<', "", inp)
-                if inp.lower().endswith(spec.units.lower()):       # remove the engineering unit if applicable
-                    inp = inp[:-len(spec.units)]
+                if spec.units != '':
+                    if inp.lower().endswith(spec.units.lower()):       # remove the engineering unit if applicable
+                        inp = inp[:-len(spec.units)]
                 if spec.shows_as == ShowAsEnum.engineering:
                     try:
                         inp = EngNumber(inp)
@@ -638,7 +631,6 @@ class CLI:
                 if questionary.confirm("Want to print IPN barcode?", auto_enter=False, default=True).ask():
                     self.printer.open()
                     e7epd.label_making.print_barcodes([new_part['ipn']], self.printer)
-                    self.printer.printer.wait_for_print()
                     self.printer.close()
             # todo: move this above print function. is here to test above function
             self.db.add_new_part(part_type, new_part)
@@ -901,7 +893,6 @@ class CLI:
         if direct_print:
             self.printer.open()
             e7epd.label_making.print_barcodes([ipn], self.printer)
-            self.printer.printer.wait_for_print()
             self.printer.close()
         else:
             e7epd.label_making.export_barcodes([ipn], width, export_path)
@@ -949,8 +940,14 @@ class CLI:
                     continue
                 t = self.conf.get_database_connection_info(db_name)
                 if t['type'] == 'mongodb':
-                    # todo: special print if auth is not enable or not
-                    console.print("This is a Mongo server, where:\nUsername: {username}\nDatabase Host: {db_host}\nDatabase Name: {db_name}".format(**t, db_name=db_name))
+                    console.print("This is a Mongo server, where")
+                    console.print(f"\tDatabase Host: {t['db_host']}")
+                    console.print(f"\tMongo Auth DB: {t['auth_db']}")
+                    if t['auth']:
+                        console.print("\tAuthentication Enabled")
+                        console.print(f"\tUsername: {t['username']}")
+                    else:
+                        console.print("\tAuthentication Disabled")
 
     def main(self):
         # Check DB version before doing anything
@@ -980,7 +977,7 @@ class CLI:
                 if e7epd.label_making.available is None:
                     choices += ['Print/Export Barcode']
                 else:
-                    choices += [questionary.Choice(title=prompt_toolkit.HTML('<strike>Print/Export Barcode</strike>').formatted_text)]
+                    choices += [questionary.Choice(title='Print/Export Barcode', disabled=e7epd.label_making.available)]
                 choices += ['Exit']
                 to_do = questionary.select("Select what to do:",
                                            choices=choices, use_shortcuts=True).ask()
@@ -1102,10 +1099,59 @@ def ask_for_database(config: CLIConfig):
 #     e7epd.label_making.export_barcodes(ipn_list, width, export)
 
 
+def printDigikeyOrder():
+    """Prints a Digikey order from a csv"""
+    if e7epd.label_making.available:
+        console.print(f"[red]Printing your Digikey order into barcodes isn't available ({e7epd.label_making.available})[/red]")
+        return
+    if e7epd.label_making.direct_printing_failed:
+        console.print(f"[red]Unable to directly print to printer ({e7epd.label_making.direct_printing_failed})[/red]")
+        return
+
+    printer = e7epd.label_making.PrinterObject()
+    if not printer.open():
+        console.print("[red]Unable to open printer, exiting[/red]")
+        return
+
+    try:
+        allMfg = []
+        mfgColumnName = 'Manufacturer Part Number'
+
+        path = questionary.path("Enter the path for Digikey csv file", default='~').ask()
+        if path == '':
+            return
+        path = path.strip()
+        path = os.path.expanduser(path)
+        if not os.path.isfile(path):
+            console.print(f"Path given ({path}) is not a file not exist")
+            return
+
+        with open(path, 'r', newline='') as f:
+            reader = csv.reader(f)
+            header = reader.__next__()      # read header
+            if mfgColumnName not in header:
+                console.print("The CSV doesn't have the manufacturer part number")
+                return
+            mfgColumnIdx = header.index(mfgColumnName)
+
+            for row in reader:
+                mfg = row[mfgColumnIdx]
+                if mfg != '':
+                    allMfg.append(row[mfgColumnIdx])
+
+        print(allMfg)
+        if not questionary.confirm(f"Are you sure you want to print {len(allMfg)} part numbers?").ask():
+            return
+        # todo: perhaps a selection option? Or have it cross-reference the database for existing mfgs?
+        e7epd.label_making.print_barcodes(allMfg, printer)
+    finally:
+        printer.close()
+
+
 def exporter_app(conf: CLIConfig, database_connection: pymongo.database.Database):
     # log = logging.getLogger('exporter_app')
     # db = e7epd.E7EPD(database_connection)
-    console.print("Not implemented ")
+    console.print("Not implemented (todo)")
 
 
 def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database, import_file: str):
@@ -1288,10 +1334,15 @@ def main():
     parser = argparse.ArgumentParser(description='E7EPD CLI Application')
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
     parser.add_argument('--import_csv', help='Run the importer utility with the given CSV (not fully functional)', default=None)
-    parser.add_argument('--export', action='store_true', help='Exports data in a csv or json format', default=None)
+    parser.add_argument('--export', action='store_true', help='Exports data in a csv or json format (not functional)', default=None)
+    parser.add_argument('--digikeyBarcode', action='store_true', help='Utility to print your Digikey csv into barcodes', default=None)
     args = parser.parse_args()
 
     setup_logger(args.verbose)
+
+    if args.digikeyBarcode:
+        printDigikeyOrder()
+        return
 
     c = CLIConfig()
     db_name = None
