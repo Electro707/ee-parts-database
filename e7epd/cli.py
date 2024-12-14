@@ -219,6 +219,7 @@ class CLI:
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
+        self.printer = None
         if e7epd.label_making.direct_printing_failed is None:
             self.printer = e7epd.label_making.PrinterObject()
 
@@ -449,76 +450,62 @@ class CLI:
                     - The input given as the spec type (so for resistance it will return as a float)
                     - The operator to compare with the input if allowed, like == or >
         """
-        # todo: this
-        # if spec['input_type'] == 'parts_json':  # We are handling adding a part, which is seperate from a value
-        #     try:
-        #         inp = self._ask_for_pcb_parts()
-        #     except self._HelperFunctionExitError:
-        #         raise KeyboardInterrupt()
-        #     return inp
         op = e7epd.ComparisonOperators('==')
         while 1:
-            # todo: do we need the following case handling below??
-            # if spec_name == 'ipn':
-            #     try:
-            #         inp = self._ask_ipn(self.db.get_all_parts_one_keys(part_type, 'ipn'))
-            #     except self._HelperFunctionExitError:
-            #         raise KeyboardInterrupt()
-            # else:
             if choices:
-                inp = questionary.autocomplete("Enter value for %s: " % spec.showcase_name, choices=choices).ask()
+                val = questionary.autocomplete("Enter value for %s: " % spec.showcase_name, choices=choices).ask()
             else:
-                inp = questionary.text("Enter value for %s: " % spec.showcase_name).ask()
-            if inp is None:
+                val = questionary.text("Enter value for %s: " % spec.showcase_name).ask()
+            if val is None:
                 raise KeyboardInterrupt()
-            if inp == '':
+            if val == '':
                 if spec.required is True:
                     console.print("You must enter this spec as it's required")
                     continue
                 else:
-                    inp = None
+                    val = None
 
-            if inp is not None:
+            if val is not None:
                 # Remove leading and trailing whitespace
-                inp = inp.strip()
+                val = val.strip()
                 if operator_allowed:
-                    if inp.startswith(tuple(['<', '<=', '>', '>='])):
-                        op = re.findall(r'\>=|\>|\<=|\<', inp)[0]
+                    if val.startswith(tuple(['<', '<=', '>', '>='])):
+                        op = re.findall(r'\>=|\>|\<=|\<', val)[0]
                         op = e7epd.ComparisonOperators(op)
-                        inp = re.sub(r'\>=|\>|\<=|\<', "", inp)
+                        val = re.sub(r'\>=|\>|\<=|\<', "", val)
                 if spec.units != '':
-                    if inp.lower().endswith(spec.units.lower()):       # remove the engineering unit if applicable
-                        inp = inp[:-len(spec.units)]
+                    if val.lower().endswith(spec.units.lower()):       # remove the engineering unit if applicable
+                        val = val[:-len(spec.units)]
                 if spec.shows_as == ShowAsEnum.engineering:
                     try:
-                        inp = EngNumber(inp)
+                        val = EngNumber(val)
                     except decimal.InvalidOperation:
                         console.print("Invalid engineering number")
                         continue
                 elif spec.shows_as == ShowAsEnum.precentage:
-                    if '%' in inp:
-                        inp = inp.replace('%', '')
+                    if '%' in val:
+                        val = val.replace('%', '')
                     else:
                         console.print("Inputted value is not a percentage")
                         continue
-                elif '/' in inp and spec.input_type is float:
-                    inp = inp.split('/')
+                elif '/' in val and spec.input_type is float:       # if fractional
+                    val = val.split('/')
                     try:
-                        inp = float(inp[0]) / float(inp[1])
+                        val = float(val[0]) / float(val[1])
                     except ValueError:
                         console.print("Inputted value is not a proper fraction")
                         continue
 
                 try:
                     if spec.input_type is int:
-                        inp = int(inp)
+                        val = int(val)
                     elif spec.input_type is float:
-                        inp = float(inp)
+                        val = float(val)
                 except ValueError:
                     console.print("Inputted value is not a %s" % spec.input_type)
                     continue
             break
-        return inp, op
+        return val, op
 
     def ask_for_spec_input(self, spec: e7epd.spec.SpecLineItem, choices: list = None):
         inp, op = self.ask_for_spec_input_with_operator(spec, choices, operator_allowed=False)
@@ -627,11 +614,12 @@ class CLI:
                     except KeyboardInterrupt:
                         console.print("Did not add part")
                         return
-            if self.printer.get_availability():
-                if questionary.confirm("Want to print IPN barcode?", auto_enter=False, default=True).ask():
-                    self.printer.open()
-                    e7epd.label_making.print_barcodes([new_part['ipn']], self.printer)
-                    self.printer.close()
+            if self.printer:
+                if self.printer.get_availability():
+                    if questionary.confirm("Want to print IPN barcode?", auto_enter=False, default=True).ask():
+                        self.printer.open()
+                        e7epd.label_making.print_barcodes([new_part['ipn']], self.printer)
+                        self.printer.close()
             # todo: move this above print function. is here to test above function
             self.db.add_new_part(part_type, new_part)
 
@@ -856,7 +844,7 @@ class CLI:
             return
 
         direct_print = False
-        if e7epd.label_making.direct_printing_failed is None:
+        if self.printer:
             r = questionary.select("Choose whether you want to export to directly print", choices=['Print to PTouch', 'Export to PDF']).ask()
             if r is None:
                 return
