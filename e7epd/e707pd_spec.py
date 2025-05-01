@@ -226,6 +226,17 @@ Buttons = PartSpec(
     }
 )
 
+Hardware = PartSpec(
+    db_type_name='hardware',
+    showcase_name='Hardware',
+    table_display_order=eedata_generic_items_preitems+('hw_type', 'size')+eedata_generic_items_postitems,
+    items={
+        **BasePartItems,
+        'hw_type': SpecLineItem('Type', ShowAsEnum.normal, str, True),
+        'size': SpecLineItem('Size', ShowAsEnum.normal, float, True),
+    }
+)
+
 Others = PartSpec(
     db_type_name=None,        # Misc parts's type will be empty
     showcase_name='Other',
@@ -255,6 +266,7 @@ PCBPartsItems = {
 
 """
     While not part of the spec, but these are handly for autofills
+    todo: maybe include this in database, then add as-needed by user
 """
 autofill_helpers_list = {
     'ic_manufacturers': ["MICROCHIP", "TI", "ANALOG DEVICES", "ON-SEMI", "STMICROELECTRONICS",

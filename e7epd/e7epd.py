@@ -152,33 +152,32 @@ class E7EPD:
         # todo: have the autofill helpers be stored and configurable in the database
         autocomplete_choices = None
         autofill_helpers = spec.autofill_helpers_list
-        # if db_name == 'manufacturer' and table_name == 'ic':
-        #     autocomplete_choices = autofill_helpers['ic_manufacturers']
-        # if db_name == 'manufacturer' and table_name == 'resistor':
-        #     autocomplete_choices = autofill_helpers['passive_manufacturers']
-        # elif db_name == 'ic_type' and table_name == 'ic':
-        #     autocomplete_choices = autofill_helpers['ic_types']
-        # elif db_name == 'cap_type' and table_name == 'capacitor':
-        #     autocomplete_choices = autofill_helpers['capacitor_types']
-        # elif db_name == 'diode_type' and table_name == 'diode':
-        #     autocomplete_choices = autofill_helpers['diode_type']
-        # elif db_name == 'bjt_type' and table_name == 'bjt':
-        #     autocomplete_choices = autofill_helpers['bjt_types']
-        # elif db_name == 'mosfet_type' and table_name == 'mosfet':
-        #     autocomplete_choices = autofill_helpers['mosfet_types']
-        # elif db_name == 'led_type' and table_name == 'led':
-        #     autocomplete_choices = autofill_helpers['led_types']
-        # elif db_name == 'fuse_type' and table_name == 'fuse':
-        #     autocomplete_choices = autofill_helpers['fuse_types']
-        # # Package Auto-Helpers
-        # elif db_name == 'package' and table_name == 'ic':
-        #     autocomplete_choices = autofill_helpers['ic_packages']
-        # elif db_name == 'package' and (table_name == 'resistor' or table_name == 'capacitor' or table_name == 'inductor'):
-        #     autocomplete_choices = autofill_helpers['passive_packages']
         if item_key == 'ipn':
             autocomplete_choices = self.get_all_parts_by_keys(part_spec, 'ipn')
-        elif item_key == 'package' and (part_spec in [spec.Resistor]):
-            autocomplete_choices = autofill_helpers['passive_packages']
+        elif part_spec in [spec.Resistor, spec.Capacitor, spec.Inductor]:
+            if item_key == 'package':
+                autocomplete_choices = autofill_helpers['passive_packages']
+            elif item_key == 'manufacturer':
+                autocomplete_choices = autofill_helpers['passive_manufacturers']
+            elif part_spec == spec.Capacitor and item_key == 'cap_type':
+                autocomplete_choices = autofill_helpers['capacitor_types']
+        elif part_spec == spec.IC:
+            if item_key == 'ic_type':
+                autocomplete_choices = autofill_helpers['ic_types']
+            elif item_key == 'manufacturer':
+                autocomplete_choices = autofill_helpers['ic_manufacturers']
+            elif item_key == 'package':
+                autocomplete_choices = autofill_helpers['ic_packages']
+        elif part_spec == spec.Diode and item_key == 'diode_type':
+            autocomplete_choices = autofill_helpers['diode_type']
+        elif part_spec == spec.BJT and item_key == 'bjt_type':
+            autocomplete_choices = autofill_helpers['bjt_types']
+        elif part_spec == spec.FET and item_key == 'mosfet_type':
+            autocomplete_choices = autofill_helpers['mosfet_types']
+        elif part_spec == spec.LED and item_key == 'led_type':
+            autocomplete_choices = autofill_helpers['led_types']
+        elif part_spec == spec.Fuse and item_key == 'fuse_type':
+            autocomplete_choices = autofill_helpers['fuse_types']
 
         return autocomplete_choices
 

@@ -29,7 +29,7 @@ import json
 import pymongo
 import pymongo.errors
 import pymongo.database
-import pkg_resources
+import importlib.resources
 import re
 import warnings
 import argparse
@@ -82,9 +82,16 @@ class CLIConfig:
 
     def __init__(self):
         self.log = logging.getLogger('CLIConfig')
-        if not pkg_resources.resource_isdir(__name__, 'data'):
-            os.mkdir(pkg_resources.resource_filename(__name__, "data"))
-        self.file_path = pkg_resources.resource_filename(__name__, "data/cli_config.json")
+
+        if sys.platform == 'linux':
+            data_path = os.path.expanduser('~/.config/e7epd')
+        else:
+            data_path = os.path.join(importlib.resources.files(__name__), 'data')
+
+        if not os.path.isdir(data_path):
+            os.makedirs(data_path)
+
+        self.file_path = os.path.join(data_path, "cli_config.json")
         self.config = self._Config()
         if os.path.isfile(self.file_path):
             with open(self.file_path) as f:
@@ -292,6 +299,7 @@ class CLI:
     def _ask_for_pcb_parts(self) -> list:
         """
         Called when wanting to input parts for a PCB
+        # todo: allow BOM import, would make life easier
         """
         all_parts_dict = []
         all_ipn_parts = self.db.get_all_parts_by_keys(None, ret_key=['ipn', 'type'])
@@ -314,7 +322,7 @@ class CLI:
                 new_part['type'] = [i['type'] for i in all_ipn_parts if i['ipn'] == ipn][0]
             elif specific_part == "Generic":
                 try:
-                    part_type = self.choose_component()
+                    part_type = self.choose_component_type()
                 except KeyboardInterrupt:
                     console.print("[red]IPN must not exist in database[/]")
                     continue
@@ -417,17 +425,36 @@ class CLI:
             return
         self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
-    def print_parts(self, part_type: e7epd.spec.PartSpec = None):
-        if part_type is None:
+    def search_parts(self):
+        choice = [questionary.Choice(title=i.showcase_name, value=i) for i in self.db.comp_types] + [self.return_formatted_choice]
+        choice.insert(0, questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'Search by IPN')])))
+        choice.insert(-1, questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')])))
+        component = questionary.select("Select the component you want do things with:", choices=choice).ask()
+        if component is None or component == 'Return':
+            console.print("[red]No part chosen[/]")
+            return
+
+        if component == 'PCBs':
+            part_type = e7epd.spec.PCBItems
+        elif component == 'Search by IPN':
+            all_ipn_list = self.db.get_all_parts_by_keys(None, 'ipn')
             try:
-                part_type = self.choose_component()
-            except KeyboardInterrupt:
-                console.print("[red]No part chosen[/]")
+                ipn_number = self._ask_ipn(all_ipn_list, must_already_exist=True)
+            except self._HelperFunctionExitError:
+                console.print("Must have an INP")
                 return
+
+            part = self.db.get_part_by_ipn(ipn_number)
+            part_db = self.db.get_part_spec_by_db_name(part['type'])
+            self.print_parts_list(part_db, [part], title="Searched Part %s" % ipn_number)
+            return
+        else:
+            part_type = component
+
         if self.db.get_number_of_parts_in_db(part_type) == 0:
             console.print("[italic red]Sorry, but there are no parts for that component[/]")
             return
-        all_parts = questionary.confirm("Do you want to filter the parts beforehand?", default=False, auto_enter=True).ask(patch_stdout=False, kbi_msg="Exited option")
+        all_parts = questionary.confirm("Do you want to filter the parts beforehand (to print all or not)?", default=False, auto_enter=True).ask(patch_stdout=False, kbi_msg="Exited option")
         if all_parts is None:
             return
         if all_parts:
@@ -583,19 +610,21 @@ class CLI:
     def add_new_part(self, part_type: e7epd.spec.PartSpec = None):
         """ Function gets called when a part is to be added """
         try:
+            try:
+                ipn = self._ask_ipn(self.db.get_all_parts_by_keys(None, 'ipn'), must_already_exist=False)
+            except self._HelperFunctionExitError as e:
+                if e.extra_data is not None:
+                    if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=True).ask():
+                        self.add_stock_to_part(None, e.extra_data)
+                return
+
             if part_type is None:
-                part_type = self.choose_component(True)
+                part_type = self.choose_component_type(True)
             if part_type == e7epd.spec.PCBItems:
                 console.print("Adding PCB instead")
                 self.add_new_pcb()
                 return
-            try:
-                ipn = self._ask_ipn(self.db.get_all_parts_by_keys(part_type, 'ipn'), must_already_exist=False)
-            except self._HelperFunctionExitError as e:
-                if e.extra_data is not None:
-                    if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=False).ask():
-                        self.add_stock_to_part(part_type, e.extra_data)
-                return
+
             new_part = {'ipn': ipn}
             for spec_db_name in part_type.table_display_order:
                 # Skip over the ipn as we already have that
@@ -645,7 +674,7 @@ class CLI:
 
     def add_stock_to_part(self, part_db: e7epd.spec.PartSpec = None, ipn: str = None):
         try:
-            if ipn is None or part_db is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
+            if ipn is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
                 try:
                     part_db, ipn = self.get_partdb_and_ipn(part_db, True)
                 except self._HelperFunctionExitError:
@@ -791,28 +820,28 @@ class CLI:
 
         return
 
-    def component_cli(self, part_db: e7epd.spec.PartSpec):
-        """ The CLI handler for components """
-        while 1:
-            to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Edit Part", self.return_formatted_choice]).ask()
-            if to_do is None:
-                raise KeyboardInterrupt()
-            if to_do == "Return":
-                break
-            elif to_do == "Print parts in DB":
-                self.print_parts(part_db)
-            elif to_do == "Add Part":
-                self.add_new_part(part_db)
-            elif to_do == "Delete Part":
-                self.delete_part(part_db)
-            elif to_do == "Append Stock":
-                self.add_stock_to_part(part_db)
-            elif to_do == "Remove Stock":
-                self.remove_stock_from_part(part_db)
-            elif to_do == "Edit Part":
-                self.edit_part(part_db)
+    # def component_cli(self, part_db: e7epd.spec.PartSpec):
+    #     """ The CLI handler for components """
+    #     while 1:
+    #         to_do = questionary.select("What do you want to do in this component database? ", choices=["Print parts in DB", "Append Stock", "Remove Stock", "Add Part", "Delete Part", "Edit Part", self.return_formatted_choice]).ask()
+    #         if to_do is None:
+    #             raise KeyboardInterrupt()
+    #         if to_do == "Return":
+    #             break
+    #         elif to_do == "Print parts in DB":
+    #             self.search_parts(part_db)
+    #         elif to_do == "Add Part":
+    #             self.add_new_part(part_db)
+    #         elif to_do == "Delete Part":
+    #             self.delete_part(part_db)
+    #         elif to_do == "Append Stock":
+    #             self.add_stock_to_part(part_db)
+    #         elif to_do == "Remove Stock":
+    #             self.remove_stock_from_part(part_db)
+    #         elif to_do == "Edit Part":
+    #             self.edit_part(part_db)
 
-    def choose_component(self, allow_pcb: bool = False) -> typing.Union[e7epd.spec.PartSpec, dict]:
+    def choose_component_type(self, allow_pcb: bool = False) -> typing.Union[e7epd.spec.PartSpec, dict]:
         """
         Dialog to choose which component to use.
         Returns: The component class
@@ -957,9 +986,10 @@ class CLI:
                                        "Selected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
-                choices = ['Check components for PCB', 'Search Part',
+                choices = ['Search Part',
                            'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
                            'Database Setting',
+                           # 'Check components for PCB'
                            # 'Digikey API Settings'
                            ]
                 if e7epd.label_making.available is None:
@@ -977,7 +1007,7 @@ class CLI:
                     self.print_pcb_and_component_availability()
                     continue
                 elif to_do == 'Search Part':
-                    self.print_parts()
+                    self.search_parts()
                 elif to_do == 'Add new part':
                     try:
                         self.add_new_part()
