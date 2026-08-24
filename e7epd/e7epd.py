@@ -1,3 +1,6 @@
+"""
+The python interface class for the E7EPD database
+"""
 import dataclasses
 import enum
 import logging
@@ -8,6 +11,7 @@ import pymongo
 import pymongo.database
 from engineering_notation import EngNumber
 import typing
+from typing import Optional, Union, List, Dict, Any, Mapping
 
 import e7epd.e707pd_spec as spec
 
@@ -53,7 +57,7 @@ class ComparisonOperators(enum.Enum):
 class SpecWithOperator:
     """ Dataclass for a specification with optional operators """
     key: str
-    val: typing.Union[float, int, str]
+    val: Union[float, int, str]
     operator: ComparisonOperators = ComparisonOperators.equal
 
 
@@ -71,20 +75,20 @@ class E7EPDConfigTable:
     """
     A generic configuration table. Currently, this is only used to store a db_ver key
 
-    This creates a table (`e7epd_config`) with a key-value style data scheme.
+    This creates a collection named 'config' in the database
     """
     def __init__(self, db_conn: pymongo.database.Database):
         self.log = logging.getLogger('config')
         self.coll = db_conn['config']
 
-    def get(self, key: str) -> typing.Union[str, None]:
+    def get(self, key: str) -> Optional[str]:
         d = self.coll.find_one({'key': key})
         if d is None:
             return None
         else:
             return d['val']
 
-    def set(self, key: str, value: typing.Any):
+    def set(self, key: str, value: Any):
         d = self.coll.find_one_and_update({'key': key}, {'$set': {'val': value}})
         if d is None:
             self.coll.insert_one({'key': key, 'val': value})
@@ -93,11 +97,7 @@ class E7EPDConfigTable:
         # This does nothing. It's mostly here for compatibility with any set-get-save class callback
         pass
 
-    def check_first_time(self):
-        if self.get('first_time') is None:
-            self.set('first_time', True)
-
-    def get_db_version(self) -> typing.Union[str, None]:
+    def get_db_version(self) -> Optional[str]:
         return self.get('db_ver')
 
     def store_current_db_version(self):
@@ -138,7 +138,7 @@ class E7EPD:
         if self.config.get_db_version() is None:
             self.config.store_current_db_version()
 
-    def get_autocomplete_list(self, part_spec: spec.PartSpec, item_key: str) -> typing.Union[None, list]:
+    def get_autocomplete_list(self, part_spec: spec.PartSpec, item_key: str) -> Optional[List[str]]:
         """
         Gets a list of current data for autocomplete when asking for a spec
 
@@ -213,18 +213,26 @@ class E7EPD:
         # Add part to DB
         self.pcb_coll.insert_one(pcb_data)
 
-    def get_pcb(self, pcb_id: str = None, rev: str = None) -> dict:
-        doc = self.pcb_coll.find_one({'id': pcb_id, 'rev': rev})
+    def get_pcb(self, pcb_id: str, rev: Optional[str] = None) -> Optional[Mapping[str, Any]]:
+        q = {'id': pcb_id}
+        if rev:
+            q['rev'] = rev
+        doc = self.pcb_coll.find_one(q)
         return doc
 
-    def get_all_unique_pcbs(self) -> typing.List[typing.Dict]:
+    def get_all_unique_pcbs(self) -> List[Dict[str, str]]:
         ret = []
         q = self.pcb_coll.find()
         for i in q:
-            ret.append({'id': i['id'], 'rev': i['rev']})
+            ret.append({'id': i['id'], 'rev': i['rev'], 'name': i['name']})
         return ret
 
-    def find_pcb_part(self, part: dict) -> typing.Union[None, typing.List[dict]]:
+    def find_pcb_part(self, part: dict) -> Optional[List[dict]]:
+        """
+        Given a `part` dictionary from a PCB, determine what parts we have in stock that meets the requirements
+
+        For parts with specific IPNs this is simple, but things like passives requires a broader search
+        """
         part_type = part['type']
         part = part['part']
         if 'ipn' in part:
@@ -239,7 +247,7 @@ class E7EPD:
                 spec_search.append(SpecWithOperator(key=k, val=part[k]['val'],
                                                     operator=ComparisonOperators(part[k]['op'])))
             return self.get_parts(self.get_part_spec_by_db_name(part_type), spec_search)
-        return []
+        return None
 
     def add_user(self, u: spec.UserSpec):
         # Do a check to ensure the same name does not exist
@@ -248,11 +256,11 @@ class E7EPD:
             raise InputException("The user (by name) already exists in the database")
         self.users_coll.insert_one(dataclasses.asdict(u))
 
-    def get_user_by_name(self, name: str) -> typing.Union[dict, None]:
+    def get_user_by_name(self, name: str) -> Optional[Mapping[str, Any]]:
         co = self.users_coll.find_one({'name': name})
         return co
 
-    def get_all_users_name(self) -> typing.List[str]:
+    def get_all_users_name(self) -> List[str]:
         co = self.users_coll.find({})
         return [i['name'] for i in co]
 
@@ -282,7 +290,7 @@ class E7EPD:
         else:
             raise InputException("Did not give a manufacturer part number")
 
-    def get_part_by_ipn(self, ipn: str) -> dict:
+    def get_part_by_ipn(self, ipn: str) -> Optional[Mapping[str, Any]]:
         """
 
         Args:
@@ -304,8 +312,8 @@ class E7EPD:
         d = self.part_coll.count_documents({'type': part_class.db_type_name})
         return d
 
-    def get_parts(self, part_class: spec.PartSpec,
-                  to_filter: typing.List[SpecWithOperator] = None) -> typing.List[dict]:
+    def get_parts(self, part_class: Optional[spec.PartSpec],
+                  to_filter: Optional[List[SpecWithOperator]] = None) -> List[Dict[str, Any]]:
         """
         Get parts in the database , optionally filtering by the part type
         Args:
@@ -322,20 +330,20 @@ class E7EPD:
             for f in to_filter:
                 if f.operator != ComparisonOperators.equal and type(f.val) is str:
                     raise InputException("Gave some comparison operator while input is a string")
-                if f.key not in part_class.items:
-                    raise InputException(f"Input key of {f.key} is not part of the part class's spec")
+                if part_class:
+                    if f.key not in part_class.items:
+                        raise InputException(f"Input key of {f.key} is not part of the part class's spec")
 
                 if type(f.val) is str:
                     q[f.key] = {'$regex': f.val, '$options': 'i'}
                 else:
                     q[f.key] = {operator_to_mongo_comp[f.operator]: f.val}
 
-        print(q)
         d = self.part_coll.find(q)
         return list(d)
 
-    def get_all_parts_by_keys(self, part_class: typing.Union[spec.PartSpec, None],
-                              ret_key: typing.Union[str, list]) -> list:
+    def get_all_parts_by_keys(self, part_class: Optional[spec.PartSpec],
+                              ret_key: Union[str, List[str]]) -> list:
         """
         Returns all parts in the database, but filtered to only return one key
         Args:
@@ -347,7 +355,7 @@ class E7EPD:
         ret = []
         d = self.get_parts(part_class)
         for d_i in d:
-            if type(ret_key) is list:
+            if isinstance(ret_key, list):
                 ret.append({i: d_i[i] for i in ret_key})
             else:
                 ret.append(d_i[ret_key])
@@ -385,7 +393,7 @@ class E7EPD:
         self.log.debug(f"Deleting: {q}")
         self.part_coll.delete_one(q)
 
-    def update_part(self, part_class: typing.Union[spec.PartSpec, None], ipn: str, new_values: dict):
+    def update_part(self, part_class: Optional[spec.PartSpec], ipn: str, new_values: dict):
         """
         Updates a part with a certain type and IPN with some new values given as a dictionary
 
@@ -395,7 +403,7 @@ class E7EPD:
             ipn: The IPN of the part to update
             new_values: The new dictionary key-values to update the part with
         """
-        q = {'ipn': ipn}
+        q = {'ipn': ipn}        # type: Dict[str, Any]
         if part_class is not None:
             q['type'] = part_class.db_type_name
             for d in new_values:
@@ -480,7 +488,7 @@ class E7EPD:
                 raise InputException(f"Required key of {spec_k} is not found in the new part dict")
 
 
-def print_formatted_from_spec(part_class: spec.PartSpec, part_data: dict) -> typing.Union[None, str]:
+def print_formatted_from_spec(part_class: spec.PartSpec, part_data: dict) -> Optional[str]:
     """
     Prints out a nice string depending on the given part_class
 

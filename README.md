@@ -23,13 +23,20 @@ From Rev0.4 and onwards, `e7epd` can be installed with
 pip install e7epd
 ```
 To install from the GitHub repository, run the following command inside the cloned repository:
-```
+```bash
 pip install .
+# Or if you are developing, to include the extra documentation dependencies
+pip install -e .[docs]
 ```
   
 ## Security:
-#### NOTICE: The password for the database server is stored in a json file in plain format. Make sure the db account only has permission to the parts' database.
-#### NOTICE: The database between the server and the client can be in plain-text if ssl is not enabled with the new Mongo setup
+
+> [!WARNING]
+> The password for the database server is stored in a json file in plain format.
+> ake sure the db account only has permission to the parts' database.
+
+> [!WARNING]
+> The database between the server and the client can be in plain-text if ssl is not enabled with the new Mongo setup
 
 ## CLI Application
 To start using this application/database, simply launch `e7epd` from the command line. Prompts should show up, allowing you to interact with the 
@@ -48,7 +55,8 @@ The documentation is for the latest released version. For the non-released maste
 For more details as to how parts are stored in the database, see [database specification](https://e7epd.readthedocs.io/en/latest/database_spec.html)
 
 The python file `e7epd.py` includes a `E7EPD` class, which is a wrapper for the database.
-To add the database wrapper `e7epd.py` to your project, you will need Python>3.7 with their pre-installed packages as well as the following extra packages:
+To add the database wrapper `e7epd.py` to your project, you will need Python>3.7 with their pre-installed packages as well
+as the following extra packages:
 - [pymongo](https://pypi.org/project/pymongo/)
   
 The following packages are required to run the `e7epd` CLI utility:

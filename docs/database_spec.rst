@@ -21,8 +21,7 @@ The following collections will be created in the `ee-parts-db` database:
 
 - parts
 - pcbs
-- users
-- e7epd_config
+- config
 
 Specification Notes
 ---------------------------------
@@ -227,18 +226,20 @@ Table Name: ``misc_c``
 
 PCBs
 ---------------------------------
+Each PCB is a document in the `pcbs` collection.
 Each PCB will have parts associated with it. This should allow the user application to determine if it's possible to
 build up a board given the current component's stock.
 
-PCB Table
+PCB Document
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ============= ========================= =========== =======================================================
 Name          Type                      Required?   Description
 ============= ========================= =========== =======================================================
 stock         int                       YES         The number of parts in stock
-board_name    str                       YES         The board's name. Can also be thought of as the project's name
+id            str                       YES         Some ID to refer to the PCBA to. Should be a part number
+name          str                       YES         The board's name
 rev           str                       YES         The pcb's revision
-sub_rev       str                                   The pcb's sub-revision
+storage       str                                   The location where the bare boards are stored
 comments      str                                   Comments about the part
 parts         list                      YES         A list containing all of the parts used for this project
 ============= ========================= =========== =======================================================

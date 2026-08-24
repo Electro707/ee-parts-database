@@ -1,13 +1,19 @@
+"""
+Mostly Python declarations for the specification of the database, including what part types exist and how
+    they are stored in the database
+"""
 import dataclasses
 from dataclasses import dataclass, field, asdict
 import enum
 import typing
+from typing import Union, Dict, Optional, Tuple
 
 
 # Outline the different parts storage specifications
 # {'db_name': "", 'showcase_name': "", 'db_type': "", 'show_as_type': "normal", 'required': False, },
 
 class ShowAsEnum(enum.Enum):
+    """Defines how an item should be showcased on the CLI"""
     normal = enum.auto()            # Display it as regular text/number
     engineering = enum.auto()       # Show it in engineering notation
     precentage = enum.auto()        # Show it as a percentage
@@ -15,6 +21,7 @@ class ShowAsEnum(enum.Enum):
     custom = enum.auto()            # For cases where the printing is specially handled
 
 class UnicodeCharacters(enum.Enum):
+    """Useful characters to be printed, so we don't store unicode in source code"""
     Omega = '\u03A9'
     mu = '\u03BC'
 
@@ -45,14 +52,14 @@ class PartSpec:
     """
     How each part specification should be organized as
     """
-    db_type_name: typing.Union[str, None]
-    showcase_name: str
-    table_display_order: tuple
-    items: typing.Dict[str, SpecLineItem]
+    db_type_name: Optional[str]         # The database name for the field 'type'
+    showcase_name: str                  # How this part is shown to the user
+    table_display_order: Tuple          # what order should the items be shown in a list
+    items: Dict[str, SpecLineItem]      # The properties of the part
 
 
 """
-The spec for any component. NOTE: this MUST match the parts table's keys
+The spec common for all components. NOTE: this MUST match the parts table's keys
 """
 BasePartItems = {
     'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
@@ -249,7 +256,7 @@ Others = PartSpec(
 PCBItems = {
     'stock': SpecLineItem('Stock', ShowAsEnum.normal, int, True),
     'id': SpecLineItem('Board ID', ShowAsEnum.normal, str, True),
-    'board name': SpecLineItem('Board Name', ShowAsEnum.normal, str, False),
+    'name': SpecLineItem('Board Name', ShowAsEnum.normal, str, False),
     'rev': SpecLineItem('Rev', ShowAsEnum.normal, str, True),
     'storage': SpecLineItem('Storage Location', ShowAsEnum.normal, str, False),
     'comments': SpecLineItem('Comments', ShowAsEnum.normal, str, False),

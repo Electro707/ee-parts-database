@@ -6,6 +6,8 @@
 # External Modules Import
 import csv
 import dataclasses
+import enum
+from dataclasses import dataclass
 import logging
 import logging.handlers
 import rich
@@ -25,6 +27,7 @@ from prompt_toolkit.formatted_text import to_formatted_text, HTML
 import os
 import sys
 import typing
+from typing import Optional, Dict, List, Any
 import json
 import pymongo
 import pymongo.errors
@@ -44,6 +47,7 @@ console = rich.console.Console(style="blue")
 
 
 def CLIConfig_config_db_list_checker(func):
+    """A decorator that checks if we have something in the database"""
     def wrap(self, *args, **kwargs):
         if len(self.config.db_list) == 0:
             raise self.NoDatabaseException()
@@ -52,7 +56,7 @@ def CLIConfig_config_db_list_checker(func):
 
 
 class CLIConfig:
-    @dataclasses.dataclass
+    @dataclass
     class _Config:
         last_db: str = ""
         db_list: dict = dataclasses.field(default_factory=dict)
@@ -80,13 +84,14 @@ class CLIConfig:
     class DatabaseDeprecatedException(Exception):
         pass
 
-    def __init__(self):
+    def __init__(self, data_path: Optional[str] = None):
         self.log = logging.getLogger('CLIConfig')
 
-        if sys.platform == 'linux':
-            data_path = os.path.expanduser('~/.config/e7epd')
-        else:
-            data_path = os.path.join(importlib.resources.files(__name__), 'data')
+        if data_path is None:
+            if sys.platform == 'win32':
+                data_path = os.path.join(os.environ["APPDATA"], 'e7epd')
+            else:
+                data_path = os.path.expanduser('~/.config/e7epd')
 
         if not os.path.isdir(data_path):
             os.makedirs(data_path)
@@ -151,14 +156,24 @@ class CLIConfig:
                 self.log.exception("OperationFailure going to database")
                 raise self.DatabaseConnectionException()
             return db
+        else:
+            raise ValueError(f"DB Configuration is invalid, was {db_conf['type']}")
 
     @CLIConfig_config_db_list_checker
-    def get_database_connection_info(self, database_name: str = None) -> dict:
+    def get_database_connection_info(self, database_name: str) -> dict:
         return self.config.db_list[database_name]
 
     @CLIConfig_config_db_list_checker
     def get_stored_db_names(self) -> list:
         return list(self.config.db_list.keys())
+
+    @CLIConfig_config_db_list_checker
+    def rename_database(self, old_name: str, new_name: str):
+        self.config.db_list[new_name] = self.config.db_list.pop(old_name)
+        # If we were using the old database, rename to the active one
+        if self.config.last_db == old_name:
+            self.config.last_db = new_name
+        self.save()
 
     def get_selected_database(self) -> str:
         return self.config.last_db
@@ -183,6 +198,7 @@ class CLIConfig:
             username: The db username
             password: The db password
             host: The db host
+            auth_db: The authentication database, if any
             authenticated: Whether the server needs authentication or not
             ssl: Whether the connection will have ssl/tls enabled
         """
@@ -230,7 +246,7 @@ class CLI:
         if e7epd.label_making.direct_printing_failed is None:
             self.printer = e7epd.label_making.PrinterObject()
 
-        self.return_formatted_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
+        self.return_formatted_choice = questionary.Choice(value='return', title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
         # self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
 
     @staticmethod
@@ -244,7 +260,7 @@ class CLI:
         warnings.warn("This function is not needed as spec_list is a dict where the key is what's stored in the database", DeprecationWarning)
         return spec_list[db_name]
 
-    def _ask_ipn(self, existing_ipn_list: list = None, must_already_exist: bool = None) -> str:
+    def _ask_ipn(self, existing_ipn_list: Optional[list] = None, must_already_exist: Optional[bool] = None) -> str:
         """
         Asks for the IPN. This function handles type hinting with a given list, checking if the ipn
         is a Digikey barcode scan, and raises an error if the entered part number is already in the database or not.
@@ -259,15 +275,16 @@ class CLI:
         if existing_ipn_list is None:
             existing_ipn_list = []
         if len(existing_ipn_list) != 0:
-            ipn_entered = questionary.autocomplete("Enter the IPN (or scan a Digikey barcode): ", choices=existing_ipn_list).ask()
+            ipn_entered = questionary.autocomplete("Enter the IPN: ", choices=existing_ipn_list).ask()
         else:
-            ipn_entered = questionary.text("Enter the IPN (or scan a Digikey barcode): ").ask()
+            ipn_entered = questionary.text("Enter the IPN: ").ask()
         if ipn_entered == '' or ipn_entered is None:
             console.print("[red]Must have an IPN[/]")
             raise self._HelperFunctionExitError()
 
         ipn_entered = ipn_entered.strip().upper()
 
+        print(f"'{ipn_entered}'")
         if must_already_exist is True:
             if ipn_entered not in existing_ipn_list:
                 console.print("[red]Part must already exist in the database[/]")
@@ -278,8 +295,12 @@ class CLI:
                 raise self._HelperFunctionExitError(ipn_entered)
         return ipn_entered
 
-    def _ask_mfg_part_number(self, current_ipn: str = None):
-        """ This function mainly exists in order to handle having the mfg part number be a copy of the ipn"""
+    def _ask_mfg_part_number(self, current_ipn: Optional[str] = None) -> str:
+        """
+        Asks the user for the manufacturer part number
+        This function mainly exists in order to handle having the mfg part number be a copy of the ipn if
+            nothing is typed in
+        """
         prompt = "Enter the manufacturer part number: "
         if current_ipn:
             prompt = "Enter the MGF part number or just Enter to copy the IPN: "
@@ -425,18 +446,15 @@ class CLI:
             return
         self.print_parts_list(part_type, parts_list, title="All parts in %s" % part_type.showcase_name)
 
-    def search_parts(self):
+    def menu_search_parts(self):
         choice = [questionary.Choice(title=i.showcase_name, value=i) for i in self.db.comp_types] + [self.return_formatted_choice]
         choice.insert(0, questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'Search by IPN')])))
-        choice.insert(-1, questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')])))
         component = questionary.select("Select the component you want do things with:", choices=choice).ask()
-        if component is None or component == 'Return':
+        if component is None or component == 'return':
             console.print("[red]No part chosen[/]")
             return
 
-        if component == 'PCBs':
-            part_type = e7epd.spec.PCBItems
-        elif component == 'Search by IPN':
+        if component == 'Search by IPN':
             all_ipn_list = self.db.get_all_parts_by_keys(None, 'ipn')
             try:
                 ipn_number = self._ask_ipn(all_ipn_list, must_already_exist=True)
@@ -607,7 +625,7 @@ class CLI:
                     return
         self.db.add_new_pcb(new_pcb)
 
-    def add_new_part(self, part_type: e7epd.spec.PartSpec = None):
+    def menu_add_new_part(self, part_type: e7epd.spec.PartSpec = None):
         """ Function gets called when a part is to be added """
         try:
             try:
@@ -615,7 +633,7 @@ class CLI:
             except self._HelperFunctionExitError as e:
                 if e.extra_data is not None:
                     if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=True).ask():
-                        self.add_stock_to_part(None, e.extra_data)
+                        self.menu_add_stock_to_part(None, e.extra_data)
                 return
 
             if part_type is None:
@@ -672,7 +690,7 @@ class CLI:
         else:
             console.print("Did not delete the part, it is safe.")
 
-    def add_stock_to_part(self, part_db: e7epd.spec.PartSpec = None, ipn: str = None):
+    def menu_add_stock_to_part(self, part_db: e7epd.spec.PartSpec = None, ipn: str = None):
         try:
             if ipn is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
                 try:
@@ -701,7 +719,7 @@ class CLI:
             console.print("\nOk, no stock is changed")
             return
 
-    def remove_stock_from_part(self, part_db: e7epd.spec.PartSpec = None):
+    def menu_remove_stock_from_part(self, part_db: e7epd.spec.PartSpec = None):
         try:
             try:
                 part_db, ipn = self.get_partdb_and_ipn(part_db, True)
@@ -733,7 +751,7 @@ class CLI:
             console.print("Ok, no stock is changed")
             return
 
-    def edit_part(self, part_db: e7epd.spec.PartSpec = None):
+    def menu_edit_part(self, part_db: e7epd.spec.PartSpec = None):
         """
         Function to update the part's properties
         """
@@ -777,12 +795,26 @@ class CLI:
             console.print("Did not change part")
             return
 
-    def print_pcb_and_component_availability(self):
+    def menu_print_pcbs_list(self):
         all_boards = self.db.get_all_unique_pcbs()
         if len(all_boards) == 0:
             console.print("There are no PCBs in the database")
             return
-        all_boards = {f"{i['id']} Rev {i['rev']}": (i['id'], i['rev']) for i in all_boards}
+
+        ta = rich.table.Table(title='All PCBs')
+        ta.add_column("PCB Name")
+        ta.add_column("PCB ID")
+        ta.add_column("PCB Rev")
+        for pcb in all_boards:
+            ta.add_row(pcb['name'], pcb['id'], pcb['rev'])
+        console.print(ta)
+
+    def menu_print_pcb_and_component_availability(self):
+        all_boards = self.db.get_all_unique_pcbs()
+        if len(all_boards) == 0:
+            console.print("There are no PCBs in the database")
+            return
+        all_boards = {f"{i['name']} Rev {i['rev']}": (i['id'], i['rev']) for i in all_boards}
         all_board_name = list(all_boards.keys())
         all_board_name.sort()
         board_name = questionary.autocomplete("Enter the PCB name: ", choices=all_board_name).ask()
@@ -795,21 +827,26 @@ class CLI:
         all_parts_in_board = []         # type: typing.List[tuple]
         for board_part in board['parts']:
             parts = self.db.find_pcb_part(board_part)
-            if len(parts) == 0:
-                all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', '-', '-', '-', '-'], 'red'))
+            if parts is None or len(parts) == 0:
+                all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', '-', '-', '-'], 'red'))
             elif len(parts) == 1:
                 part = parts[0]
-                all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], None))
+                all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], None))
             else:
-                for part in parts:
-                    all_parts_in_board.append(([str(board_part['qty']), board_part['designator'], '-', part['type'], part['ipn'], f"{part['stock']:d}", part['storage']], 'yellow'))
+                for partI, part in enumerate(parts):
+                    l = ['', '', '']
+                    if partI == 0:
+                        l = [str(board_part['qty']), board_part['designator'], part['type']]
+                    l.append(part['ipn'])
+                    l.append(f"{part['stock']:d}")
+                    l.append(part['storage'])
+                    all_parts_in_board.append((l, 'yellow'))
 
         console.print("You currently have {:d} PCBs available".format(board['stock']))
 
-        ta = rich.table.Table(title='All components for {} Rev {}'.format(board['board name'], board['rev']))
+        ta = rich.table.Table(title='All components for {} Rev {}'.format(board['name'], board['rev']))
         ta.add_column("Stock Required")
         ta.add_column("Reference")
-        ta.add_column("Description")
         ta.add_column("Component Type")
         ta.add_column("Available IPN#")
         ta.add_column("Stock Available")
@@ -852,7 +889,7 @@ class CLI:
             pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
             choice.insert(-1, pcb_choice)
         component = questionary.select("Select the component you want do things with:", choices=choice).ask()
-        if component is None or component == 'Return':
+        if component is None or component == 'return':
             raise KeyboardInterrupt()
         elif component == 'PCBs':
             part_db = e7epd.spec.PCBItems
@@ -860,7 +897,7 @@ class CLI:
             part_db = component
         return part_db
 
-    def print_export_barcode(self):
+    def menu_print_export_barcode(self):
         def isfloat(num):
             try:
                 float(num)
@@ -926,31 +963,37 @@ class CLI:
             console.print("Did not delete the database")
             return
 
-    def database_settings(self):
-        console.print("Current selected database is: %s" % self.conf.get_selected_database())
-        while 1:
-            to_do = questionary.select("What do you want to? ", choices=["Add Database", "Wipe Database", "Print DB Info", "Select another database", self.return_formatted_choice]).ask()
-            if to_do is None or to_do == "Return":
+    def menu_database_settings(self):
+        class MenuDatabaseSettingsOptions(enum.StrEnum):
+            ADD = "Add Database"
+            RENAME = "Rename Database"
+            WIPE = "Wipe Database"
+            PRINT_INFO = "Print DB Info"
+            SELECT_OTHER = "Select another database"
+        console.print(f"Current selected database is: {self.conf.get_selected_database()}")
+        while True:
+            to_do = questionary.select("What do you want to? ", choices=list(MenuDatabaseSettingsOptions) + [self.return_formatted_choice]).ask()
+            if to_do is None or to_do == 'return':
                 break
-            elif to_do == "Add Database":
+            elif to_do == MenuDatabaseSettingsOptions.ADD:
                 try:
                     ask_for_database(self.conf)
                 except KeyboardInterrupt:
                     console.print("Did not add a new database")
                     continue
                 console.print("Successfully added the new database")
-            elif to_do == 'Wipe Database':
+            elif to_do == MenuDatabaseSettingsOptions.WIPE:
                 self.wipe_database()
-            elif to_do == "Select another database":
-                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
-                if db_name is None:
+            elif to_do == MenuDatabaseSettingsOptions.SELECT_OTHER:
+                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names() + [self.return_formatted_choice]).ask()
+                if db_name is None or db_name == 'return':
                     console.print("Nothing new was selected")
                     continue
                 self.conf.set_last_db(db_name)
                 console.print("Selected the database %s" % db_name)
                 console.print("[red]Please restart software for it to take into effect[/]")
                 raise KeyboardInterrupt()
-            elif to_do == "Print DB Info":
+            elif to_do == MenuDatabaseSettingsOptions.PRINT_INFO:
                 db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
                 if db_name is None:
                     console.print("Nothing new was selected")
@@ -965,8 +1008,51 @@ class CLI:
                         console.print(f"\tUsername: {t['username']}")
                     else:
                         console.print("\tAuthentication Disabled")
+            elif to_do == MenuDatabaseSettingsOptions.RENAME:
+                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
+                if db_name is None:
+                    console.print("Nothing new was selected")
+                    continue
+                new_name = questionary.text("Type the new database name", default=db_name).ask()
+                if new_name is None:
+                    console.print("Nothing new was selected")
+                    continue
+                if db_name == new_name:
+                    console.print("Entered same name for database, not renaming")
+                    continue
+                do_rename = questionary.confirm(f"Confirm to rename '{db_name}' to '{new_name}'", auto_enter=False, default=False).ask()
+                if do_rename:
+                    self.conf.rename_database(db_name, new_name)
+                else:
+                    console.print("Operation cancelled")
+
+    def menu_pcb(self):
+        class MenuPcbOptions(enum.StrEnum):
+            LIST = "List all PCBAs"
+            CHECK_COMP = "Check components for PCBA"
+            ADD = "Add PCB"
+
+        while True:
+            to_do = questionary.select("What do you want to? ", choices=list(MenuPcbOptions) + [self.return_formatted_choice]).ask()
+            if to_do is None or to_do == 'return':
+                break
+            elif to_do == MenuPcbOptions.CHECK_COMP:
+                self.menu_print_pcb_and_component_availability()
+            elif to_do == MenuPcbOptions.LIST:
+                self.menu_print_pcbs_list()
+            elif to_do == MenuPcbOptions.ADD:
+                self.add_new_pcb()
+
 
     def main(self):
+        class MenuCliOptions(enum.StrEnum):
+            SEARCH = "Search Part"
+            ADD_PART = "Add new part"
+            ADD_STOCK = "Add new stock"
+            REMOVE_STOCK = "Remove stock"
+            EDIT = "Edit Part"
+            DB = "Database Settings"
+            PCB = "PCB Submenu"
         # Check DB version before doing anything
         if not self.db.is_latest_database():
             do_update = questionary.confirm("Database {:} is not at the latest version. Upgrade?".format(self.conf.get_selected_database()), auto_enter=False, default=False).ask()
@@ -975,7 +1061,7 @@ class CLI:
             else:
                 console.print("[red]You chose to not update the database. Need to select or create another one[/]")
                 try:
-                    self.database_settings()
+                    self.menu_database_settings()
                 except KeyboardInterrupt:
                     pass
                 self.db.close()
@@ -986,63 +1072,45 @@ class CLI:
                                        "Selected database {}".format(self.db.config.get_db_version(), e7epd.__version__, self.cli_revision, self.conf.get_selected_database()), title_align='center'))
         try:
             while 1:
-                choices = ['Search Part',
-                           'Add new part', 'Add new stock', 'Remove stock', 'Edit part',
-                           'Database Setting',
-                           # 'Check components for PCB'
-                           # 'Digikey API Settings'
-                           ]
-                if e7epd.label_making.available is None:
-                    choices += ['Print/Export Barcode']
-                else:
-                    choices += [questionary.Choice(title='Print/Export Barcode', disabled=e7epd.label_making.available)]
+                choices = list(MenuCliOptions)
+                choices += [questionary.Choice(title='Print/Export Barcode', disabled=e7epd.label_making.available)]
                 choices += ['Exit']
-                to_do = questionary.select("Select what to do:",
-                                           choices=choices, use_shortcuts=True).ask()
+                to_do = questionary.select("Select what to do:", choices=choices, use_shortcuts=True).ask()
                 if to_do is None:
                     raise KeyboardInterrupt()
                 elif to_do == 'Exit':
                     break
-                elif to_do == 'Check components for PCB':
-                    self.print_pcb_and_component_availability()
-                    continue
-                elif to_do == 'Search Part':
-                    self.search_parts()
-                elif to_do == 'Add new part':
+                elif to_do == MenuCliOptions.PCB:
+                    self.menu_pcb()
+                elif to_do == MenuCliOptions.SEARCH:
+                    self.menu_search_parts()
+                elif to_do == MenuCliOptions.ADD_PART:
                     try:
-                        self.add_new_part()
+                        self.menu_add_new_part()
                     except KeyboardInterrupt:
                         continue
-                elif to_do == 'Add new stock':
+                elif to_do == MenuCliOptions.ADD_STOCK:
                     try:
-                        self.add_stock_to_part()
+                        self.menu_add_stock_to_part()
                     except KeyboardInterrupt:
                         continue
-                elif to_do == 'Remove stock':
+                elif to_do == MenuCliOptions.REMOVE_STOCK:
                     try:
-                        self.remove_stock_from_part()
+                        self.menu_remove_stock_from_part()
                     except KeyboardInterrupt:
                         continue
-                elif to_do == 'Edit part':
+                elif to_do == MenuCliOptions.EDIT:
                     try:
-                        self.edit_part()
+                        self.menu_edit_part()
                     except KeyboardInterrupt:
                         continue
                 elif to_do == 'Print/Export Barcode':
                     try:
-                        self.print_export_barcode()
+                        self.menu_print_export_barcode()
                     except KeyboardInterrupt:
                         continue
-                # todo: This was here when the parts were in physically separate tables. Might no longer make sense?
-                # elif to_do == 'Individual Components View':
-                #     while 1:
-                #         try:
-                #             part_db = self.choose_component()
-                #             self.component_cli(part_db)
-                #         except KeyboardInterrupt:
-                #             break
-                elif to_do == 'Database Setting':
-                    self.database_settings()
+                elif to_do == MenuCliOptions.DB:
+                    self.menu_database_settings()
                 # elif to_do == 'Digikey API Settings':     # todo: this
                 #     self.digikey_api_settings_menu()
 
@@ -1170,6 +1238,33 @@ def exporter_app(conf: CLIConfig, database_connection: pymongo.database.Database
     # log = logging.getLogger('exporter_app')
     # db = e7epd.E7EPD(database_connection)
     console.print("Not implemented (todo)")
+    return
+
+def import_pcb_bom(db_conn: pymongo.database.Database, import_file: str):
+    """WIP, a function to allow importing of BOMs as PCB items"""
+    log = logging.getLogger('importer_app')
+
+    db = e7epd.E7EPD(db_conn)
+    if not os.path.isfile(import_file):
+        console.print("[red]The given file does not exist[/]")
+        return
+    _, f_ext = os.path.splitext(import_file)
+    if f_ext != '.csv':
+        console.print("[red]The given file is not a CSV[/]")
+        return
+
+    requiredHeader = {
+        'designator': ['designator'],
+        'qty': ['qty', 'quantity'],
+    }
+    headerIdx = {}
+
+    with open(import_file, 'r', newline='') as f:
+        reader = csv.reader(f)
+
+        header = reader.__next__()
+        for reqH in requiredHeader:
+            pass
 
 
 def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database, import_file: str):
@@ -1418,6 +1513,8 @@ def main():
         except c.DatabaseConnectionException:
             console.print("Unable to connect to database")
             return
+
+    assert db_conn is not None
 
     if args.import_csv is not None:
         importer_app(c, db_conn, args.import_csv)
