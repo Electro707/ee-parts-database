@@ -26,27 +26,24 @@ else:
     direct_printing_failed = None
 
 
-class PrinterObject:
+class PrinterObject(pyPTouch.PTouch):
     def __init__(self):
-        self.printer = pyPTouch.PTouch()
+        super().__init__()
         self.log = logging.getLogger('e7epd.printer')
 
     def get_availability(self):
-        return self.printer.is_printer_available()
+        return self.is_printer_available()
 
     def open(self) -> bool:
         try:
-            self.printer.open()
+            super().open()
         except pyPTouch.PTouchConnection:
             self.log.info("Unable to connect to a printer")
             return False
         return True
 
-    def close(self):
-        self.printer.close()
-
     def get_current_tape_width(self):
-        return self.printer.get_tape_width_px()
+        return self.get_tape_width_px()
 
 
 def _make_barcode(data: str, **writter_options) -> bytes:
@@ -59,35 +56,6 @@ def _make_barcode(data: str, **writter_options) -> bytes:
     return barcode_img.render(writer_options=writter_options)
 
 
-# def generate_barcodes(ipns: typing.List[str], label_width: float) -> bytes:
-#     html_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "label_template.html")
-#
-#     with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "label_template.css"), 'r') as f:
-#         css = f.read()
-#
-#     css += f"@page {{ height: {label_width}mm;  padding: 0.0mm; }}"
-#     css += f"img {{ height:{label_width}mm;  }}"
-#
-#     records = [{'ipn': i} for i in ipns]
-#     for i, r in enumerate(records):
-#         # img = _make_barcode(r['ipn'], module_height=label_width, module_width=0.2, text_distance=label_width/2, font_size=label_width, dpi=128, margin_bottom=-0.15*label_width)
-#         img = _make_barcode(r['ipn'], module_height=label_width-2, module_width=0.14, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0)
-#         img = img.decode()
-#         # print(label_width, img.size)
-#         r['page_height'] = f'{label_width*2}mm'
-#         # r['page_width'] = f"{(img.size[0] * (label_width) / img.size[1]) + 1}mm"
-#         r['page_width'] = f"100mm"
-#         print(img)
-#         r['barcode_data'] = img
-#         r['page_id'] = f'page{i}'
-#
-#         css += f"@page page{i} {{ width: {r['page_width']}; }}"
-#
-#     css = CSS(string=css)
-#
-#     label_writer = LabelWriter(item_template_path=html_path, default_stylesheets=(css, ))
-#     return label_writer.write_labels(records, target=None)
-
 def generate_barcode(ipn: str, label_width: float) -> bytes:
     """
     Generates a barcode svg
@@ -98,10 +66,7 @@ def generate_barcode(ipn: str, label_width: float) -> bytes:
     Notes:
         This function assumes a 180 DPI printer
     """
-    # img = _make_barcode(r['ipn'], module_height=label_width, module_width=0.2, text_distance=label_width/2, font_size=label_width, dpi=128, margin_bottom=-0.15*label_width)
-    # img = _make_barcode(r['ipn'], module_height=label_width-3, module_width=0.1411, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0, quiet_zone=0)
     img = _make_barcode(ipn, module_height=label_width-3, module_width=(1/(180/25.4))*1, text_distance=2, font_size=label_width/2, margin_bottom=0, margin_top=0, quiet_zone=0)
-    # img = img.decode()
 
     # thanks chatgpt
     i = img.decode()
@@ -152,8 +117,8 @@ def print_barcodes(ipns: typing.List[str], printer: PrinterObject):
         svgs = generate_barcode(ip, label_width)
         # if i == len(ipns)-1:
         #     end = True
-        printer.printer.print_svg(svgs, False)
-        printer.printer.wait_for_print()
+        printer.print_svg(svgs, False)
+        printer.wait_for_print()
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ from prompt_toolkit.formatted_text import FormattedText
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
 import e7epd.label_making
+import e7epd.test
 
 console = rich.console.Console(style="blue")
 
@@ -690,7 +691,7 @@ class CLI:
         else:
             console.print("Did not delete the part, it is safe.")
 
-    def menu_add_stock_to_part(self, part_db: e7epd.spec.PartSpec = None, ipn: str = None):
+    def menu_add_stock_to_part(self, part_db: Optional[e7epd.spec.PartSpec] = None, ipn: Optional[str] = None):
         try:
             if ipn is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
                 try:
@@ -698,7 +699,10 @@ class CLI:
                 except self._HelperFunctionExitError:
                     return
             component = self.db.get_part_by_ipn(ipn)
-            console.print('There are {:d} parts of the selected component'.format(component['stock']))
+            if component is None:
+                console.print('[red]Unable to find the desired components. This is a bug![/]')
+                return
+            console.print(f'There are {component['stock']:d} parts of the selected component')
             while 1:
                 add_by = questionary.text("Enter how much you want to add this part by: ").ask()
                 if add_by is None:
@@ -714,12 +718,12 @@ class CLI:
                 break
             component['stock'] += add_by
             self.db.update_part_stock(ipn, component['stock'])
-            console.print('[green]Add to your stock :). There is now {:d} left of it.[/]'.format(component['stock']))
+            console.print(f'[green]Add to your stock :). There is now {component['stock']:d} left of it.[/]')
         except KeyboardInterrupt:
             console.print("\nOk, no stock is changed")
             return
 
-    def menu_remove_stock_from_part(self, part_db: e7epd.spec.PartSpec = None):
+    def menu_remove_stock_from_part(self, part_db: Optional[e7epd.spec.PartSpec] = None):
         try:
             try:
                 part_db, ipn = self.get_partdb_and_ipn(part_db, True)
@@ -878,7 +882,7 @@ class CLI:
     #         elif to_do == "Edit Part":
     #             self.edit_part(part_db)
 
-    def choose_component_type(self, allow_pcb: bool = False) -> typing.Union[e7epd.spec.PartSpec, dict]:
+    def choose_component_type(self, allow_pcb: bool = False) -> e7epd.spec.PartSpec:
         """
         Dialog to choose which component to use.
         Returns: The component class
@@ -1185,26 +1189,50 @@ def ask_for_database(config: CLIConfig):
 #     e7epd.label_making.export_barcodes(ipn_list, width, export)
 
 
-def printDigikeyOrder():
-    """Prints a Digikey order from a csv"""
-    if e7epd.label_making.available:
-        console.print(f"[red]Printing your Digikey order into barcodes isn't available ({e7epd.label_making.available})[/red]")
-        return
-    if e7epd.label_making.direct_printing_failed:
-        console.print(f"[red]Unable to directly print to printer ({e7epd.label_making.direct_printing_failed})[/red]")
-        return
+def import_order_csv(cli: CLI):
+    """Imports an order CSV and/or prints labels for them"""
+    TESTING_DEFAULT_CSV = ''        # for testing
+    # TESTING_DEFAULT_CSV = '/home/electro/Downloads/DK_PRODUCTS_101423034.csv'
 
-    printer = e7epd.label_making.PrinterObject()
-    if not printer.open():
-        console.print("[red]Unable to open printer, exiting[/red]")
-        return
+    allow_print = True
+    if e7epd.label_making.available:
+        res = questionary.confirm(f"Printing order is not possible due to python ({e7epd.label_making.available}). Continue?", False).ask()
+        if res is not True:
+            return
+        allow_print = False
+    if e7epd.label_making.direct_printing_failed:
+        res = questionary.confirm(f"Will be unable to print to barcode label ({e7epd.label_making.direct_printing_failed}). Continue?", False).ask()
+        if res is not True:
+            return
+        allow_print = False
+
+    printer = None
+    if allow_print:
+        printer = e7epd.label_making.PrinterObject()
+        if not printer.open():
+            console.print("[red]Unable to open printer, exiting[/]")
+            return
+        w = printer.get_tape_width_px()
+        if w == 0:
+            console.print("[orange]No tape installed in printer[/]")
+            return
+
+    # digikey specific, for now
+    # todo: allow user to select columns
+    column_names = {
+        'mfg_part_numb': 'Manufacturer Part Number',
+        'ipn': 'Manufacturer Part Number',
+        'comments': 'Description',
+        'manufacturer': 'Manufacturer',
+        'stock': 'Quantity',
+    }
+    column_index = {}
 
     try:
-        allMfg = []
-        mfgColumnName = 'Manufacturer Part Number'
+        allParts = []
 
-        path = questionary.path("Enter the path for Digikey csv file", default='~').ask()
-        if path == '':
+        path = questionary.path("Enter the path for Digikey csv file", TESTING_DEFAULT_CSV).ask()
+        if path is None:
             return
         path = path.strip()
         path = os.path.expanduser(path)
@@ -1215,30 +1243,66 @@ def printDigikeyOrder():
         with open(path, 'r', newline='') as f:
             reader = csv.reader(f)
             header = reader.__next__()      # read header
-            if mfgColumnName not in header:
-                console.print("The CSV doesn't have the manufacturer part number")
-                return
-            mfgColumnIdx = header.index(mfgColumnName)
+            for dbName, colN in column_names.items():
+                if colN not in header:
+                    console.print(f"The CSV doesn't have the required column {colN}, bailing")
+                    return
+                column_index[dbName] = header.index(colN)
 
             for row in reader:
-                mfg = row[mfgColumnIdx]
-                if mfg != '':
-                    allMfg.append(row[mfgColumnIdx])
+                partInfo = {}
+                # ignore any parts that don't have a part number, such as a subtotal row
+                if row[column_index['ipn']] == '':
+                    continue
+                for dbName, idx in column_index.items():
+                    partInfo[dbName] = e7epd.e707pd_spec.BasePartItems[dbName].input_type(row[idx])
+                allParts.append(partInfo)
 
-        print(allMfg)
-        if not questionary.confirm(f"Are you sure you want to print {len(allMfg)} part numbers?").ask():
-            return
-        # todo: perhaps a selection option? Or have it cross-reference the database for existing mfgs?
-        e7epd.label_making.print_barcodes(allMfg, printer)
+        # print(allParts)
+
+        existingPartsInp = cli.db.get_all_parts_by_keys(None, 'ipn')
+
+        for part in allParts:
+            addPart = questionary.confirm(f"Import {part['ipn']} - {part['comments']} QTY={part['stock']}?", True, auto_enter=False).unsafe_ask()
+            if addPart is not True:
+                console.print(f"Skipping part {part['ipn']}")
+                continue
+
+            # check if we already imported this part, and if so prompt to add instead
+            if part['ipn'] in existingPartsInp:
+                console.print(f"Part already exists in database, adding to stock")
+                cli.db.add_part_stock(part['ipn'], part['stock'])
+            else:
+                part_type = cli.choose_component_type()
+                part_to_save = {}
+                part_to_save.update(part)
+                for spec_db_name in part_type.table_display_order:
+                    # Skip over existing parameters that we imported
+                    if spec_db_name in part_to_save:
+                        continue
+                    # Select an autocomplete choice, or None if there isn't any
+                    autocomplete_choices = cli.db.get_autocomplete_list(part_type, spec_db_name)
+                    try:  # Ask the user for that property
+                        part_to_save[spec_db_name] = cli.ask_for_spec_input(part_type.items[spec_db_name], autocomplete_choices)
+                    except KeyboardInterrupt:
+                        console.print("Did not add part")
+                        return
+                cli.db.add_new_part(part_type, part_to_save)
+            if printer:
+                if questionary.confirm("Want to print IPN barcode?", auto_enter=False, default=True).ask():
+                    e7epd.label_making.print_barcodes([part['ipn']], printer)
+            # todo: move this above print function. is here to test above function
+
+
+        # if not questionary.confirm(f"Are you sure you want to print {len(allParts)} part numbers?").ask():
+        #     return
+        # # todo: perhaps a selection option? Or have it cross-reference the database for existing mfgs?
+        # e7epd.label_making.print_barcodes(allMfg, printer)
+    except KeyboardInterrupt:
+        console.print("Exiting out of import")
     finally:
-        printer.close()
-
-
-def exporter_app(conf: CLIConfig, database_connection: pymongo.database.Database):
-    # log = logging.getLogger('exporter_app')
-    # db = e7epd.E7EPD(database_connection)
-    console.print("Not implemented (todo)")
-    return
+        if printer:
+            printer.close()
 
 def import_pcb_bom(db_conn: pymongo.database.Database, import_file: str):
     """WIP, a function to allow importing of BOMs as PCB items"""
@@ -1431,6 +1495,7 @@ def setup_logger(is_debug: bool = False):
     l.setLevel(logging.DEBUG)
 
     rich_handler = RichHandler()
+    rich_handler.setFormatter(logging.Formatter('%(name)s: %(message)s'))
     if is_debug:
         rich_handler.setLevel(logging.DEBUG)
     else:
@@ -1448,71 +1513,73 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
     parser.add_argument('--import_csv', help='Run the importer utility with the given CSV (not fully functional)', default=None)
     parser.add_argument('--export', action='store_true', help='Exports data in a csv or json format (not functional)', default=None)
-    parser.add_argument('--digikeyBarcode', action='store_true', help='Utility to print your Digikey csv into barcodes', default=None)
+    parser.add_argument('--import_order', action='store_true', help='Utility to import a order from a csv, optionally prints it to barcodes', default=None)
+    parser.add_argument('--mock_db', action='store_true', help='Setup to use a fake database for testing purposes', default=None)
     args = parser.parse_args()
 
     setup_logger(args.verbose)
 
-    if args.digikeyBarcode:
-        printDigikeyOrder()
-        return
-
     c = CLIConfig()
     db_name = None
     db_conn = None
-    while 1:
-        try:
-            db_conn = c.get_database_connection(db_name)
-            break
-        # if no database was configured
-        except c.NoDatabaseException:
-            try:
-                console.print("Oh no, no database is configured. Let's get that settled")
-                ask_for_database(c)
-            except KeyboardInterrupt:
-                console.print("No database given. Exiting")
-                return
-        except c.NoLastDBSelectionException:
-            db_name = questionary.select("A database was not selected last time. Please select which database to connect to", choices=c.get_stored_db_names()).ask()
-            if db_name is None:
-                console.print("No database is selected to communicate to. Please restart and select something")
-                sys.exit(-1)
-        # if we are still running an MySQL server, which has been deprecated!
-        except c.DatabaseDeprecatedException as e:
-            from e7epd import migration
 
-            if not migration.old_sql_available:
-                console.print("The migration tool cannot import sqlachemy. Run this with -v to see detailed logs")
-                sys.exit(-1)
-            if questionary.confirm("Database is too old, add mongoDb server?").ask() is not True:
-                console.print("Exiting")
-                sys.exit(-1)
-            old_sql_name = c.config.last_db
-            console.print("Enter the new MongoDB Connection")
+    if args.mock_db:
+        console.print("Using fake database for testing")
+        db_conn = e7epd.test.MockDB()
+    else:
+        while 1:
             try:
-                new_db = ask_for_database(c)
-            except KeyboardInterrupt:
-                console.print("No database given. Exiting")
-                sys.exit(-1)
-
-            new_db_conn = c.get_database_connection(new_db)
-            if questionary.confirm("Want to migrate old data from the sql to mongo db?").ask():
+                db_conn = c.get_database_connection(db_name)
+                break
+            # if no database was configured
+            except c.NoDatabaseException:
                 try:
-                    migration.update_06_to_07(new_db_conn, e.args[1])
-                except Exception as e:
-                    logging.exception("Error then importing")
-                    console.print("Other exception happened :(. See logs above")
-                    c.delete_database(new_db)
-                    continue
-                console.print("Done with migration :)")
-            c.delete_database(old_sql_name)     # delete old sql db from name
-            c.config.last_db = new_db
-            c.save()
-            continue
-        # If we are not able to connect to the database for any reason!
-        except c.DatabaseConnectionException:
-            console.print("Unable to connect to database")
-            return
+                    console.print("Oh no, no database is configured. Let's get that settled")
+                    ask_for_database(c)
+                except KeyboardInterrupt:
+                    console.print("No database given. Exiting")
+                    return
+            except c.NoLastDBSelectionException:
+                db_name = questionary.select("A database was not selected last time. Please select which database to connect to", choices=c.get_stored_db_names()).ask()
+                if db_name is None:
+                    console.print("No database is selected to communicate to. Please restart and select something")
+                    return
+            # if we are still running an MySQL server, which has been deprecated!
+            except c.DatabaseDeprecatedException as e:
+                from e7epd import migration
+
+                if not migration.old_sql_available:
+                    console.print("The migration tool cannot import sqlachemy. Run this with -v to see detailed logs")
+                    return
+                if questionary.confirm("Database is too old, add mongoDb server?").ask() is not True:
+                    console.print("Exiting")
+                    return
+                old_sql_name = c.config.last_db
+                console.print("Enter the new MongoDB Connection")
+                try:
+                    new_db = ask_for_database(c)
+                except KeyboardInterrupt:
+                    console.print("No database given. Exiting")
+                    return
+
+                new_db_conn = c.get_database_connection(new_db)
+                if questionary.confirm("Want to migrate old data from the sql to mongo db?").ask():
+                    try:
+                        migration.update_06_to_07(new_db_conn, e.args[1])
+                    except Exception as e:
+                        logging.exception("Error then importing")
+                        console.print("Other exception happened :(. See logs above")
+                        c.delete_database(new_db)
+                        continue
+                    console.print("Done with migration :)")
+                c.delete_database(old_sql_name)     # delete old sql db from name
+                c.config.last_db = new_db
+                c.save()
+                continue
+            # If we are not able to connect to the database for any reason!
+            except c.DatabaseConnectionException:
+                console.print("Unable to connect to database")
+                return
 
     assert db_conn is not None
 
@@ -1520,11 +1587,12 @@ def main():
         importer_app(c, db_conn, args.import_csv)
         return
 
-    if args.export is not None:
-        exporter_app(c, db_conn)
+    c = CLI(config=c, database_connection=db_conn)
+
+    if args.import_order:
+        import_order_csv(c)
         return
 
-    c = CLI(config=c, database_connection=db_conn)
     c.main()
 
 

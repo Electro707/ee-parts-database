@@ -417,6 +417,12 @@ class E7EPD:
         self.log.debug(f"Updating {q} with {new_values}")
         self.part_coll.find_one_and_update(q, {"$set": new_values})
 
+    def add_part_stock(self, ipn: str, added_qty: int):
+        component = self.get_part_by_ipn(ipn)
+        assert component is not None
+        new_qty = component['stock'] + added_qty
+        self.update_part(None, ipn, {'stock': new_qty})
+
     def update_part_stock(self, ipn: str, new_qty: int):
         """
         Function to purely update a part's stock
@@ -426,7 +432,6 @@ class E7EPD:
             new_qty: The new part quantity
         """
         self.update_part(None, ipn, {'stock': new_qty})
-        # self.part_coll.find_one_and_update({'ipn': ipn}, {"$set": {'stock': new_qty}})
 
     def get_part_spec_by_db_name(self, db_name: str):
         for i in self.comp_types:
