@@ -281,7 +281,7 @@ autofill_helpers_list = {
     'ic_types': ["Microcontroller", "Boost Converter", "Buck Converter", "FPGA", "Battery Charger", "Battery Management",
                  "LED Driver", "Multiplexer"],
     'capacitor_types': ['Electrolytic', 'Ceramic', 'Tantalum', 'Paper', 'Film'],
-    'diode_type': ['Regular', 'Zener', 'Schottky', 'TSV'],
+    'diode_type': ['Regular', 'Zener', 'Schottky', 'TVS'],
     'passive_manufacturers': ['STACKPOLE', 'MURATA ELECTRONICS', 'SAMSUNG ELECTRO-MECHANICS', 'TAIYO YUDEN', 'TDK'],
     'passive_packages': ['0201', '0603', '0805', '1206'],
     'ic_packages': ['SOT23', 'SOT23-5', 'SOT23-6',

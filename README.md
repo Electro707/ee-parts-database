@@ -25,8 +25,12 @@ pip install e7epd
 To install from the GitHub repository, run the following command inside the cloned repository:
 ```bash
 pip install .
-# Or if you are developing, to include the extra documentation dependencies
+# Or if you are developing (the -e), to include the extra documentation dependencies
 pip install -e .[docs]
+# Or if you want label printing
+pip install .[labelMaking]
+# Or if you are somehow using the old SQL implementation and need to migrate
+pip install .[migration]
 ```
   
 ## Security:

@@ -666,7 +666,7 @@ class CLI:
                 if self.printer.get_availability():
                     if questionary.confirm("Want to print IPN barcode?", auto_enter=False, default=True).ask():
                         self.printer.open()
-                        e7epd.label_making.print_barcodes([new_part['ipn']], self.printer)
+                        e7epd.label_making.print_barcodes(new_part['ipn'], self.printer)
                         self.printer.close()
             # todo: move this above print function. is here to test above function
             self.db.add_new_part(part_type, new_part)
@@ -913,6 +913,8 @@ class CLI:
             console.print(f"Cannot make barcodes (due to \"{e7epd.label_making.available}\")")
             return
 
+        assert self.printer is not None
+
         direct_print = False
         if self.printer:
             r = questionary.select("Choose whether you want to export to directly print", choices=['Print to PTouch', 'Export to PDF']).ask()
@@ -929,6 +931,7 @@ class CLI:
                 direct_print = False
 
         width = None
+        export_path = None
         if not direct_print:
             export_path = questionary.path("Select the pdf export path and name", default=os.getcwd() + '/').ask()
             if export_path is None or export_path == "":
@@ -950,10 +953,12 @@ class CLI:
 
         if direct_print:
             self.printer.open()
-            e7epd.label_making.print_barcodes([ipn], self.printer)
+            e7epd.label_making.print_barcodes(ipn, self.printer)
             self.printer.close()
         else:
-            e7epd.label_making.export_barcodes([ipn], width, export_path)
+            assert width is not None            # assert checks for typechecking
+            assert export_path is not None      # assert checks for typechecking
+            e7epd.label_making.export_barcodes(ipn, width, export_path)
 
     def wipe_database(self):
         do_delete = questionary.confirm("ARE YOU SURE???", auto_enter=False, default=False).ask()

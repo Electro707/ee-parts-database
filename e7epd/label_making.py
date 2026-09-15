@@ -1,12 +1,12 @@
 import io
 import logging
 import typing
+from typing import Any, Union, List
 import os
 import re
+
 try:
     import PIL.Image
-    # from blabel import label_tools
-    # from blabel import LabelWriter
     from PIL import Image
     import barcode as python_barcode
     import cairosvg
@@ -26,24 +26,30 @@ else:
     direct_printing_failed = None
 
 
-class PrinterObject(pyPTouch.PTouch):
+
+class PrinterObject:
+    """
+    This does not directly sub-class pyPTouch.PTouch as that module may or may not be available
+    """
     def __init__(self):
-        super().__init__()
+        if direct_printing_failed:
+            raise RuntimeError("Direct printing is unavailable") from direct_printing_failed
+        self.p = pyPTouch.PTouch()
         self.log = logging.getLogger('e7epd.printer')
 
     def get_availability(self):
-        return self.is_printer_available()
+        return self.p.is_printer_available()
 
     def open(self) -> bool:
         try:
-            super().open()
+            self.p.open()
         except pyPTouch.PTouchConnection:
             self.log.info("Unable to connect to a printer")
             return False
         return True
 
-    def get_current_tape_width(self):
-        return self.get_tape_width_px()
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.printer, name)
 
 
 def _make_barcode(data: str, **writter_options) -> bytes:
@@ -78,7 +84,7 @@ def generate_barcode(ipn: str, label_width: float) -> bytes:
     return img
 
 
-def export_barcodes(ipns: typing.List[str], label_width: float, export_path: str):
+def export_barcodes(ipns: Union[List[str], str], label_width: float, export_path: str):
     """
     Function to give multiple IPN (or other data) to, and exports them as a PDF file containing multiple
     pages for each IPN given
@@ -93,6 +99,9 @@ def export_barcodes(ipns: typing.List[str], label_width: float, export_path: str
 
     merger = pypdf.PdfWriter()
 
+    if isinstance(ipns, str):
+        ipns = [ipns]
+
     for i in ipns:
         svg = generate_barcode(i, label_width)
         pdf = cairosvg.svg2pdf(bytestring=svg)
@@ -101,16 +110,19 @@ def export_barcodes(ipns: typing.List[str], label_width: float, export_path: str
     merger.close()
 
 
-def print_barcodes(ipns: typing.List[str], printer: PrinterObject):
+def print_barcodes(ipns: Union[List[str], str], printer: PrinterObject):
     """
     Blocking function that will print out a barcode per each part number in the list
     Args:
         ipns: A list of part numbers to print out
         printer: The printer object to use
     """
-    label_width = printer.get_current_tape_width()
+    label_width = printer.get_tape_width_px()
     # assuming 180SPI, for brother printers
     label_width = (label_width / 180) * 25.4
+
+    if isinstance(ipns, str):
+        ipns = [ipns]
 
     # end = False
     for i, ip in enumerate(ipns):
