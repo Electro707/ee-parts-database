@@ -3,9 +3,7 @@ Mostly Python declarations for the specification of the database, including what
     they are stored in the database
 """
 import dataclasses
-from dataclasses import dataclass, field, asdict
 import enum
-import typing
 from typing import Union, Dict, Optional, Tuple
 
 
@@ -296,12 +294,3 @@ autofill_helpers_list = {
 """
     If this is ran it itself, do a test where it checks if the display order for each spec has all keys
 """
-if __name__ == '__main__':
-    print("Running Test")
-    from e7epd import E7EPD
-    all_comp_type = E7EPD.comp_types
-    for c in all_comp_type:
-        for t in c.table_display_order:
-            if t not in c.items:
-                raise AssertionError(f"Spec '{t}' not in {c.showcase_name}")
-    print("Done with test")

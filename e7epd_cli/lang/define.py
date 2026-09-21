@@ -1,0 +1,35 @@
+"""
+Auto generated using _gen_keys.py on 2026-09-20T01:26:15.691001
+"""
+from typing import Literal
+
+PrintTexts = Literal[
+    "enter_ipn",
+    "ipn_not_given",
+    "ipn_no_exist",
+    "must_have_mfg",
+    "selecting_ipn_as_mfg",
+    "done_adding_parts",
+    "no_add_part",
+    "no_add_pcb",
+    "must_choose_something",
+    "canceled_part_lookup",
+    "ask_pcb.comp_type_not_selected",
+    "ask_pcb.no_part_added",
+    "search_parts.no_parts_type_comp",
+    "ask_for_spec.enter_value",
+    "ask_for_spec.must_enter_spec",
+    "ask_for_spec.invalid_eng_numb",
+    "ask_for_spec.val_not_percentage",
+    "ask_for_spec.val_not_fraction",
+    "ask_for_spec.value_not_type",
+    "menu_add_stock.bug_no_comp",
+    "menu_add_stock.list_comp_count",
+    "menu_add_stock.ask_add",
+    "menu_add_stock.added_part",
+    "menu_add_stock.no_change",
+    "menu_add_stock.must_be_not_zero",
+    "menu_add_stock.must_be_int",
+    "qty_invalid",
+    "no_part_chosen",
+]

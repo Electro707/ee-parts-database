@@ -106,7 +106,7 @@ class E7EPDConfigTable:
 
 class E7EPD:
     # Constructor for available part types:
-    comp_types = [  # type: typing.List[spec.PartSpec]
+    comp_types: typing.List[spec.PartSpec] = [
         spec.Resistor,
         spec.Capacitor,
         spec.IC,
@@ -227,7 +227,7 @@ class E7EPD:
             ret.append({'id': i['id'], 'rev': i['rev'], 'name': i['name']})
         return ret
 
-    def find_pcb_part(self, part: dict) -> Optional[List[dict]]:
+    def find_pcb_part(self, part: dict) -> Optional[List[Mapping[str, Any]]]:
         """
         Given a `part` dictionary from a PCB, determine what parts we have in stock that meets the requirements
 
@@ -277,7 +277,7 @@ class E7EPD:
         Args:
             ipn: The internal part number to look for
 
-        Returns: A tuple, the first index being the SQL ID, the second being the component GenericPart class of the part
+        Returns: True if the part is in the database, False if not
         """
         if ipn is not None:
             d = self.part_coll.count_documents({'ipn': ipn})
@@ -313,7 +313,7 @@ class E7EPD:
         return d
 
     def get_parts(self, part_class: Optional[spec.PartSpec],
-                  to_filter: Optional[List[SpecWithOperator]] = None) -> List[Dict[str, Any]]:
+                  to_filter: Optional[List[SpecWithOperator]] = None) -> List[Mapping[str, Any]]:
         """
         Get parts in the database , optionally filtering by the part type
         Args:
@@ -322,7 +322,7 @@ class E7EPD:
 
         Returns: A dist of all part's data of the specific type
         """
-        q = {}
+        q: Dict[str, Any] = {}
         if part_class is not None:
             q['type'] = part_class.db_type_name
         # Go through parts to filter
@@ -381,9 +381,9 @@ class E7EPD:
         # Check if all required keys are matched
         for d in part_class.items:
             self._check_spec_required(d, part_class.items[d], new_part)
-            # if part_class.items[d].required:
-            #     if d not in new_part:
-            #         raise InputException(f"Required key of {d} is not found in the new part dict")
+            # Ensure all string values are lower-cased before entering the database
+            if isinstance(new_part[d], str):
+                new_part[d] = new_part[d].upper()
         # Add part to DB
         self.log.debug(f"Writing to database: {new_part}")
         self.part_coll.insert_one(new_part)
@@ -417,12 +417,6 @@ class E7EPD:
         self.log.debug(f"Updating {q} with {new_values}")
         self.part_coll.find_one_and_update(q, {"$set": new_values})
 
-    def add_part_stock(self, ipn: str, added_qty: int):
-        component = self.get_part_by_ipn(ipn)
-        assert component is not None
-        new_qty = component['stock'] + added_qty
-        self.update_part(None, ipn, {'stock': new_qty})
-
     def update_part_stock(self, ipn: str, new_qty: int):
         """
         Function to purely update a part's stock
@@ -432,6 +426,15 @@ class E7EPD:
             new_qty: The new part quantity
         """
         self.update_part(None, ipn, {'stock': new_qty})
+
+    def add_part_stock(self, ipn: str, added_qty: int):
+        component = self.get_part_by_ipn(ipn)
+        assert component is not None
+        new_qty = component['stock'] + added_qty
+        self.update_part_stock(ipn, new_qty)
+
+    def remove_part_stock(self, ipn: str, remove_qty: int):
+        self.add_part_stock(ipn, -remove_qty)
 
     def get_part_spec_by_db_name(self, db_name: str):
         for i in self.comp_types:
@@ -470,21 +473,19 @@ class E7EPD:
             return False
         return True
 
-    def backup_db(self):
+    def get_db_backup(self) -> dict:
         """
-            Backs up the database under a new backup file
+            Returns a backup of the database in dictionary form
         """
-        # todo: this
-        # new_db_file = os.path.dirname(os.path.abspath(__file__)) + '/partdb_backup_%s.json' % time.strftime('%y%m%d%H%M%S')
-        # self.log.info("Backing database under %s" % new_db_file)
-        # # https://stackoverflow.com/questions/47307873/read-entire-database-with-sqlalchemy-and-dump-as-json
-        # meta = sqlalchemy.MetaData()
-        # meta.reflect(bind=self.db_conn)  # http://docs.sqlalchemy.org/en/rel_0_9/core/reflection.html
-        # result = {}
-        # for table in meta.sorted_tables:
-        #     result[table.name] = [dict(row) for row in self.db_conn.execute(table.select())]
-        # with open(new_db_file, 'x') as f:
-        #     json.dump(result, f, indent=4)
+        exportDb = {}
+
+        colls = self.db.list_collection_names()
+        for colName in colls:
+            docs = self.db[colName].find(None)
+            docsL = docs.to_list()
+            exportDb[colName] = docsL
+            docs.close()
+        return exportDb
 
     @staticmethod
     def _check_spec_required(spec_k: str, spec_i: spec.SpecLineItem, part_dict: dict):

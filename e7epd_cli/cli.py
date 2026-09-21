@@ -23,11 +23,10 @@ from engineering_notation import EngNumber
 import questionary
 import prompt_toolkit
 import prompt_toolkit.formatted_text
-from prompt_toolkit.formatted_text import to_formatted_text, HTML
 import os
 import sys
 import typing
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple, Literal, Union
 import json
 import pymongo
 import pymongo.errors
@@ -38,7 +37,9 @@ import warnings
 import argparse
 import urllib.parse
 from prompt_toolkit.formatted_text import FormattedText
-# Local Modules Import
+# Local import
+from .lang.locale import PrintTexts, Locale
+# e7epd imports
 import e7epd
 from e7epd.e707pd_spec import ShowAsEnum
 import e7epd.label_making
@@ -48,7 +49,7 @@ console = rich.console.Console(style="blue")
 
 
 def CLIConfig_config_db_list_checker(func):
-    """A decorator that checks if we have something in the database"""
+    """A decorator that checks if we have database available in the config"""
     def wrap(self, *args, **kwargs):
         if len(self.config.db_list) == 0:
             raise self.NoDatabaseException()
@@ -108,18 +109,14 @@ class CLIConfig:
             json.dump(dataclasses.asdict(self.config), f, indent=4)
 
     @CLIConfig_config_db_list_checker
-    def get_database_connection(self, database_name: str = None) -> pymongo.database.Database:
+    def get_database_connection(self, database_name: str) -> pymongo.database.Database:
         """
         Gets a database connection based off the database name.
 
         Args:
             database_name: The database name (internal name) to get a connection to
+                           If None, it uses the last database connection used
         """
-        # todo: add JSON file compatibility
-        if database_name is None:
-            database_name = self.config.last_db
-            if database_name is None:
-                raise self.NoLastDBSelectionException()
         if database_name not in self.config.db_list:
             raise self.NoLastDBSelectionException()
 
@@ -135,6 +132,8 @@ class CLIConfig:
 
         Args:
             db_conf: The database config dictionary
+        Raises:
+            DatabaseConnectionException: If the connection to the database fails
         """
         if db_conf['type'] in ['local', 'mysql_server', 'postgress_server']:
             raise self.DatabaseDeprecatedException("Not supported, deprecated in 0.7.0", db_conf)
@@ -168,6 +167,9 @@ class CLIConfig:
     def get_stored_db_names(self) -> list:
         return list(self.config.db_list.keys())
 
+    def is_any_db_config_stored(self) -> bool:
+        return len(self.config.db_list) != 0
+
     @CLIConfig_config_db_list_checker
     def rename_database(self, old_name: str, new_name: str):
         self.config.db_list[new_name] = self.config.db_list.pop(old_name)
@@ -178,6 +180,11 @@ class CLIConfig:
 
     def get_selected_database(self) -> str:
         return self.config.last_db
+
+    def is_db_valid(self, dbName) -> bool:
+        if dbName not in self.config.db_list:
+            return False
+        return True
 
     def set_last_db(self, database_name: str):
         self.config.last_db = database_name
@@ -243,12 +250,22 @@ class CLI:
         self.db = e7epd.E7EPD(database_connection)
         self.conf = config
 
+        self.lang = Locale()
+
         self.printer = None
         if e7epd.label_making.direct_printing_failed is None:
             self.printer = e7epd.label_making.PrinterObject()
 
         self.return_formatted_choice = questionary.Choice(value='return', title=prompt_toolkit.formatted_text.FormattedText([('green', 'Return')]))
         # self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
+
+    def print_error(self, text_key: PrintTexts, *args):
+        to_print = self.lang.get(text_key).format(args)
+        console.print(f"[red]{to_print:s}[/]")
+
+    def print(self, text_key: PrintTexts, *args):
+        to_print = self.lang.get(text_key).format(args)
+        console.print(f"{to_print:s}")
 
     @staticmethod
     def find_spec_by_db_name(spec_list: typing.Dict[str, e7epd.spec.SpecLineItem], db_name: str) -> e7epd.spec.SpecLineItem:
@@ -261,40 +278,37 @@ class CLI:
         warnings.warn("This function is not needed as spec_list is a dict where the key is what's stored in the database", DeprecationWarning)
         return spec_list[db_name]
 
-    def _ask_ipn(self, existing_ipn_list: Optional[list] = None, must_already_exist: Optional[bool] = None) -> str:
+    def _ask_ipn(self, existing_ipn_list: List[str] | Literal[True] | None = None) -> Optional[str]:
         """
         Asks for the IPN. This function handles type hinting with a given list, checking if the ipn
         is a Digikey barcode scan, and raises an error if the entered part number is already in the database or not.
 
         Args:
-            existing_ipn_list: A list of current manufacturer part numbers to typehint
-            must_already_exist: If a given part number must exist in the `existing_mfr_list` or must not exist
+            existing_ipn_list: A list of current manufacturer part numbers to typehint, or if True show all IPNs in database
 
         Returns: The entered manufacturer part number
         """
         # Replace default argument
         if existing_ipn_list is None:
-            existing_ipn_list = []
-        if len(existing_ipn_list) != 0:
-            ipn_entered = questionary.autocomplete("Enter the IPN: ", choices=existing_ipn_list).ask()
+            ipn_list = []
+        elif existing_ipn_list is True:
+            ipn_list = self._get_all_ipns()
+        else:
+            ipn_list = existing_ipn_list
+
+        if len(ipn_list) != 0:
+            ipn_entered = questionary.autocomplete("Enter the IPN: ", choices=ipn_list).ask()
         else:
             ipn_entered = questionary.text("Enter the IPN: ").ask()
         if ipn_entered == '' or ipn_entered is None:
-            console.print("[red]Must have an IPN[/]")
-            raise self._HelperFunctionExitError()
+            return None
 
         ipn_entered = ipn_entered.strip().upper()
 
-        print(f"'{ipn_entered}'")
-        if must_already_exist is True:
-            if ipn_entered not in existing_ipn_list:
-                console.print("[red]Part must already exist in the database[/]")
-                raise self._HelperFunctionExitError(ipn_entered)
-        elif must_already_exist is False:
-            if ipn_entered in existing_ipn_list:
-                console.print("[red]Part must not already exist in the database, which it does![/]")
-                raise self._HelperFunctionExitError(ipn_entered)
         return ipn_entered
+
+    def _get_all_ipns(self):
+        return self.db.get_all_parts_by_keys(None, 'ipn')
 
     def _ask_mfg_part_number(self, current_ipn: Optional[str] = None) -> str:
         """
@@ -308,10 +322,10 @@ class CLI:
         mfr_part_numb = questionary.text(prompt).ask()
         if mfr_part_numb == '':
             if current_ipn is None:
-                console.print("[red]Must have a manufacturer part number[/]")
+                self.print_error('must_have_mfg')
                 raise self._HelperFunctionExitError()
             else:
-                console.print("Selecting current IPN as MGF part number")
+                self.print_error('selecting_ipn_as_mfg')
                 return current_ipn
 
         mfr_part_numb = mfr_part_numb.strip().upper()
@@ -325,6 +339,7 @@ class CLI:
         """
         all_parts_dict = []
         all_ipn_parts = self.db.get_all_parts_by_keys(None, ret_key=['ipn', 'type'])
+        all_ipns = [i['ipn'] for i in all_ipn_parts]
         while 1:
             new_part = {'part': {}}
             # Ask for the part itself, what it is and get the type
@@ -335,10 +350,12 @@ class CLI:
                 console.print("Done adding parts")
                 break
             elif specific_part == "Specific":
-                try:
-                    ipn = self._ask_ipn([i['ipn'] for i in all_ipn_parts], True)
-                except self._HelperFunctionExitError:
-                    console.print("[red]IPN must not exist in database[/]")
+                ipn = self._ask_ipn(all_ipns)
+                if ipn is None:
+                    self.print_error('ipn_not_given')
+                    continue
+                if ipn not in all_ipns:
+                    self.print_error('ipn_no_exist')
                     continue
                 new_part['part']['ipn'] = ipn
                 new_part['type'] = [i['type'] for i in all_ipn_parts if i['ipn'] == ipn][0]
@@ -346,7 +363,7 @@ class CLI:
                 try:
                     part_type = self.choose_component_type()
                 except KeyboardInterrupt:
-                    console.print("[red]IPN must not exist in database[/]")
+                    self.print_error('ask_pcb.comp_type_not_selected')
                     continue
                 new_part['type'] = part_type.db_type_name
                 for spec_db_name in part_type.items:
@@ -371,15 +388,16 @@ class CLI:
                 continue
             # Ask for quantity
             try:
-                new_part['qty'] = int(questionary.text("Enter quantity of this part used on this PCB:").ask())
+                qtyS = questionary.text("Enter quantity of this part used on this PCB:").ask()
+                new_part['qty'] = int(qtyS)
             except ValueError:
-                console.print("[red]Invalid quantity[/]")
+                self.print_error('qty_invalid')
                 continue
             new_part['designator'] = questionary.text("Enter the designator/reference:").ask()
             all_parts_dict.append(new_part)
 
         if len(all_parts_dict) == 0:
-            console.print("Added nothing for parts")
+            self.print_error('ask_pcb.no_part_added')
             raise self._HelperFunctionExitError()
         return all_parts_dict
 
@@ -425,9 +443,8 @@ class CLI:
         search_filter = []
         for s in specs_selected:
             if s == 'ipn':
-                try:
-                    inp = self._ask_ipn(self.db.get_all_parts_by_keys(part_type, 'ipn'))
-                except self._HelperFunctionExitError:
+                inp = self._ask_ipn(self.db.get_all_parts_by_keys(part_type, 'ipn'))
+                if inp is None:
                     console.print("Canceled part lookup")
                     return
                 op = e7epd.ComparisonOperators.equal
@@ -452,15 +469,17 @@ class CLI:
         choice.insert(0, questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'Search by IPN')])))
         component = questionary.select("Select the component you want do things with:", choices=choice).ask()
         if component is None or component == 'return':
-            console.print("[red]No part chosen[/]")
+            self.print_error('no_part_chosen')
             return
 
         if component == 'Search by IPN':
-            all_ipn_list = self.db.get_all_parts_by_keys(None, 'ipn')
-            try:
-                ipn_number = self._ask_ipn(all_ipn_list, must_already_exist=True)
-            except self._HelperFunctionExitError:
-                console.print("Must have an INP")
+            all_ipn_list = self._get_all_ipns()
+            ipn_number = self._ask_ipn(all_ipn_list)
+            if ipn_number is None:
+                self.print_error('ipn_not_given')
+                return
+            if ipn_number not in all_ipn_list:
+                self.print_error('ipn_no_exist')
                 return
 
             part = self.db.get_part_by_ipn(ipn_number)
@@ -471,7 +490,7 @@ class CLI:
             part_type = component
 
         if self.db.get_number_of_parts_in_db(part_type) == 0:
-            console.print("[italic red]Sorry, but there are no parts for that component[/]")
+            self.print_error('search_parts.no_parts_type_comp')
             return
         all_parts = questionary.confirm("Do you want to filter the parts beforehand (to print all or not)?", default=False, auto_enter=True).ask(patch_stdout=False, kbi_msg="Exited option")
         if all_parts is None:
@@ -481,8 +500,8 @@ class CLI:
         else:
             self.print_all_parts(part_type)
 
-    def ask_for_spec_input_with_operator(self, spec: e7epd.spec.SpecLineItem, choices: list = None,
-                                         operator_allowed: bool = True) -> (typing.Union[str, float, int], e7epd.ComparisonOperators):
+    def ask_for_spec_input_with_operator(self, spec: e7epd.spec.SpecLineItem, choices: Optional[List[str]] = None,
+                                         operator_allowed: bool = True) -> Tuple[Union[str, float, int], e7epd.ComparisonOperators]:
         """
         Function that prompts the user to enter the specification (resistance, package, etc) for a part.
         This function allows nicely type inputs like 10k
@@ -498,15 +517,16 @@ class CLI:
         """
         op = e7epd.ComparisonOperators('==')
         while 1:
+            to_ask = self.lang.get('ask_for_spec.enter_value').format(spec.showcase_name)
             if choices:
-                val = questionary.autocomplete("Enter value for %s: " % spec.showcase_name, choices=choices).ask()
+                val = questionary.autocomplete(to_ask, choices=choices).ask()
             else:
-                val = questionary.text("Enter value for %s: " % spec.showcase_name).ask()
+                val = questionary.text(to_ask).ask()
             if val is None:
                 raise KeyboardInterrupt()
             if val == '':
                 if spec.required is True:
-                    console.print("You must enter this spec as it's required")
+                    self.print('ask_for_spec.must_enter_spec')
                     continue
                 else:
                     val = None
@@ -526,20 +546,20 @@ class CLI:
                     try:
                         val = EngNumber(val)
                     except decimal.InvalidOperation:
-                        console.print("Invalid engineering number")
+                        self.print('ask_for_spec.invalid_eng_numb')
                         continue
                 elif spec.shows_as == ShowAsEnum.precentage:
                     if '%' in val:
                         val = val.replace('%', '')
                     else:
-                        console.print("Inputted value is not a percentage")
+                        self.print('ask_for_spec.val_not_percentage')
                         continue
                 elif '/' in val and spec.input_type is float:       # if fractional
                     val = val.split('/')
                     try:
                         val = float(val[0]) / float(val[1])
                     except ValueError:
-                        console.print("Inputted value is not a proper fraction")
+                        self.print('ask_for_spec.val_not_fraction')
                         continue
 
                 try:
@@ -548,12 +568,12 @@ class CLI:
                     elif spec.input_type is float:
                         val = float(val)
                 except ValueError:
-                    console.print("Inputted value is not a %s" % spec.input_type)
+                    self.print('ask_for_spec.value_not_type', spec.input_type)
                     continue
             break
         return val, op
 
-    def ask_for_spec_input(self, spec: e7epd.spec.SpecLineItem, choices: list = None):
+    def ask_for_spec_input(self, spec: e7epd.spec.SpecLineItem, choices: Optional[List[str]] = None):
         inp, op = self.ask_for_spec_input_with_operator(spec, choices, operator_allowed=False)
         return inp
 
@@ -587,32 +607,6 @@ class CLI:
             autocomplete_choices = autofill_helpers['passive_packages']
         return autocomplete_choices
 
-    def get_partdb_and_ipn(self, part_db: e7epd.spec.PartSpec = None, ipn_must_exist: bool = None):
-        """
-        Helper function to get the manufacturer part number and component database
-        Args:
-            part_db: The selected component database. If not given, this function will return one depending on the
-                     manufacturer part number
-            ipn_must_exist: Whether the manufacturer part number must already exist in the database
-
-        Returns: A tuple of a selected component database and the manufacturer part number
-        """
-        if part_db is None:
-            all_ipn_list = self.db.get_all_parts_by_keys(None, 'ipn')
-        else:
-            all_ipn_list = self.db.get_all_parts_by_keys(part_db, 'ipn')
-
-        try:
-            ipn_number = self._ask_ipn(all_ipn_list, must_already_exist=ipn_must_exist)
-        except self._HelperFunctionExitError:
-            raise self._HelperFunctionExitError()
-
-        if part_db is None:
-            t = self.db.get_part_by_ipn(ipn_number)['type']
-            part_db = self.db.get_part_spec_by_db_name(t)
-
-        return part_db, ipn_number
-
     def add_new_pcb(self):
         new_pcb = {}
         for spec_db_name in e7epd.spec.PCBItems:
@@ -622,23 +616,27 @@ class CLI:
                 try:  # Ask the user for that property
                     new_pcb[spec_db_name] = self.ask_for_spec_input(e7epd.spec.PCBItems[spec_db_name])
                 except KeyboardInterrupt:
-                    console.print("Did not add part")
+                    self.print_error('no_add_pcb')
                     return
         self.db.add_new_pcb(new_pcb)
 
-    def menu_add_new_part(self, part_type: e7epd.spec.PartSpec = None):
+    def menu_add_new_part(self, part_type: Optional[e7epd.spec.PartSpec] = None):
         """ Function gets called when a part is to be added """
         try:
-            try:
-                ipn = self._ask_ipn(self.db.get_all_parts_by_keys(None, 'ipn'), must_already_exist=False)
-            except self._HelperFunctionExitError as e:
-                if e.extra_data is not None:
-                    if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=True).ask():
-                        self.menu_add_stock_to_part(None, e.extra_data)
+            ipnList = self._get_all_ipns()
+            ipn = self._ask_ipn(ipnList)
+            if ipn is None:
+                self.print_error("ipn_not_given")
+                return
+            if ipn in ipnList:
+                if questionary.confirm("Would you like to instead add the parts to your stock?", auto_enter=False, default=True).ask():
+                    self.menu_add_stock_to_part(ipn)
                 return
 
             if part_type is None:
                 part_type = self.choose_component_type(True)
+            part_type: e7epd.spec.PartSpec
+
             if part_type == e7epd.spec.PCBItems:
                 console.print("Adding PCB instead")
                 self.add_new_pcb()
@@ -675,61 +673,98 @@ class CLI:
             console.print("\nOk, no part is added")
             return
 
-    def delete_part(self, part_db: e7epd.spec.PartSpec):
-        """ This gets called when a part is to be deleted """
-        try:
-            part_db, ipn = self.get_partdb_and_ipn(part_db, True)
-        except self._HelperFunctionExitError:
-            return
-        if questionary.confirm("ARE YOU SURE...AGAIN???", auto_enter=False, default=False).ask():
-            try:
-                self.db.delete_part(part_db, ipn)
-            except e7epd.EmptyInDatabase:
-                console.print("[red]The manufacturer is not in the database[/]")
-            else:
-                console.print(f"Deleted {ipn} from the database")
-        else:
-            console.print("Did not delete the part, it is safe.")
+    # def delete_part(self, part_db: e7epd.spec.PartSpec):
+    #     """ This gets called when a part is to be deleted """
+    #     part_db, ipn = self.get_partdb_and_ipn(part_db, True)
+    #     if questionary.confirm("ARE YOU SURE...AGAIN???", auto_enter=False, default=False).ask():
+    #         try:
+    #             self.db.delete_part(part_db, ipn)
+    #         except e7epd.EmptyInDatabase:
+    #             console.print("[red]The manufacturer is not in the database[/]")
+    #         else:
+    #             console.print(f"Deleted {ipn} from the database")
+    #     else:
+    #         console.print("Did not delete the part, it is safe.")
 
-    def menu_add_stock_to_part(self, part_db: Optional[e7epd.spec.PartSpec] = None, ipn: Optional[str] = None):
+    def menu_add_stock_to_part(self, ipn: Optional[str] = None):
         try:
+            allIpns = self._get_all_ipns()
             if ipn is None:        # If we did not pass a pre-selected mfg part number and part db, ask for it
-                try:
-                    part_db, ipn = self.get_partdb_and_ipn(part_db, True)
-                except self._HelperFunctionExitError:
+                ipn = self._ask_ipn(allIpns)
+                if ipn is None:
+                    self.print_error('ipn_not_given')
+                    return
+                if ipn not in allIpns:
+                    self.print_error('ipn_no_exist')
                     return
             component = self.db.get_part_by_ipn(ipn)
             if component is None:
-                console.print('[red]Unable to find the desired components. This is a bug![/]')
+                self.print_error('menu_add_stock.bug_no_comp')
                 return
-            console.print(f'There are {component['stock']:d} parts of the selected component')
+            self.print('menu_add_stock.list_comp_count', component['stock'])
             while 1:
-                add_by = questionary.text("Enter how much you want to add this part by: ").ask()
+                add_by = questionary.text(self.lang.get('menu_add_stock.ask_add')).ask()
                 if add_by is None:
                     raise KeyboardInterrupt()
                 try:
                     add_by = int(add_by)
                 except ValueError:
-                    console.print("Must be an integer")
+                    self.print('menu_add_stock.must_be_int')
                     continue
                 if add_by < 0:
-                    console.print("Must be greater than 0")
+                    self.print('menu_add_stock.must_be_not_zero')
                     continue
                 break
             component['stock'] += add_by
             self.db.update_part_stock(ipn, component['stock'])
-            console.print(f'[green]Add to your stock :). There is now {component['stock']:d} left of it.[/]')
+            console.print(f'[green]' + self.lang.get('menu_add_stock.added_part').format(component['stock']) + '[/]')
         except KeyboardInterrupt:
-            console.print("\nOk, no stock is changed")
+            self.print('menu_add_stock.no_change')
             return
 
-    def menu_remove_stock_from_part(self, part_db: Optional[e7epd.spec.PartSpec] = None):
+    def menu_remove_loop(self):
+        """A loop that continuously removes parts from the database per scan, until CTRL+C is entered"""
+        console.print("Scan your parts in this loop in order to remove them from your stock")
+        console.print("If you want to remove multiple, type '10x ' and scan the IPN (note the space)")
+        while True:
+            to_remove = questionary.text("Scan barcode to remove: ").ask()
+            if to_remove is None:
+                console.print("done with removing parts")
+                return
+            to_remove: str
+            to_remove = to_remove.strip()
+            qty, sep, ipn = to_remove.partition(" ")
+            if sep == '':   # if we don't have a space, the ipn is the whole string
+                ipn = qty
+                qtyN = 1
+            else:
+                if not qty.endswith('x'):
+                    console.print("[red]Quantity must end with x, like 10x[/]")
+                    continue
+                try:
+                    qtyN = int(qty[:1])
+                except ValueError:
+                    console.print("[red]Quanitity must be an integer[/]")
+                    continue
+
+            if not self.db.check_if_already_in_db_by_ipn(ipn):
+                console.print("[red]IPN scanned/entered not valid[/]")
+                continue
+            self.db.remove_part_stock(ipn, qtyN)
+            console.print(f'[green]Removed {qtyN:d} of {ipn:s} from stock[/]')
+
+    def menu_remove_stock_from_part(self):
         try:
-            try:
-                part_db, ipn = self.get_partdb_and_ipn(part_db, True)
-            except self._HelperFunctionExitError:
+            allIpns = self._get_all_ipns()
+            ipn = self._ask_ipn(allIpns)
+            if ipn is None:
+                console.print("[red]No IPN selected[/]")
+                return
+            if ipn not in allIpns:
+                console.print("[red]IPN not in database[/]")
                 return
             component = self.db.get_part_by_ipn(ipn)
+            assert component is not None
             console.print('There are {:d} parts of the selected component'.format(component['stock']))
             while 1:
                 remove_by = questionary.text("Enter how many components to remove from this part?: ").ask()
@@ -755,18 +790,24 @@ class CLI:
             console.print("Ok, no stock is changed")
             return
 
-    def menu_edit_part(self, part_db: e7epd.spec.PartSpec = None):
+    def menu_edit_part(self):
         """
         Function to update the part's properties
         """
         to_update = {}  # A separate variable for only keys that need changing
         try:
             # Ask for manufacturer part number first, and make sure there are no conflicts
-            try:
-                part_db, ipn = self.get_partdb_and_ipn(part_db, True)
-            except self._HelperFunctionExitError:
+            allIpns = self.db.get_all_parts_by_keys(None, 'ipn')
+            ipn = self._ask_ipn(allIpns)
+            if ipn is None:
+                console.print("[red]No IPN selected[/]")
+                return
+            if ipn not in allIpns:
+                console.print("[red]IPN not in database[/]")
                 return
             component = self.db.get_part_by_ipn(ipn)
+            assert component is not None
+            part_db = self.db.get_part_spec_by_db_name(component['type'])
             while 1:
                 q = []
                 for spec_db_name in part_db.table_display_order:
@@ -890,7 +931,7 @@ class CLI:
         """
         choice = [questionary.Choice(title=i.showcase_name, value=i) for i in self.db.comp_types] + [self.return_formatted_choice]
         if allow_pcb:
-            pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]))
+            pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]).__repr__())
             choice.insert(-1, pcb_choice)
         component = questionary.select("Select the component you want do things with:", choices=choice).ask()
         if component is None or component == 'return':
@@ -946,9 +987,13 @@ class CLI:
                 return
             width = float(width)
 
-        try:
-            part_db, ipn = self.get_partdb_and_ipn(None, True)
-        except self._HelperFunctionExitError:
+        allIpns = self._get_all_ipns()
+        ipn = self._ask_ipn(allIpns)
+        if ipn is None:
+            self.print_error('ipn_not_given')
+            return
+        if ipn not in allIpns:
+            self.print_error('ipn_no_exist')
             return
 
         if direct_print:
@@ -985,9 +1030,8 @@ class CLI:
             if to_do is None or to_do == 'return':
                 break
             elif to_do == MenuDatabaseSettingsOptions.ADD:
-                try:
-                    ask_for_database(self.conf)
-                except KeyboardInterrupt:
+                ret = ask_and_save_new_db_config(self.conf)
+                if ret is None:
                     console.print("Did not add a new database")
                     continue
                 console.print("Successfully added the new database")
@@ -1062,6 +1106,7 @@ class CLI:
             EDIT = "Edit Part"
             DB = "Database Settings"
             PCB = "PCB Submenu"
+            REMOVE_STOCK_LOOP = "Enter removal mode"
         # Check DB version before doing anything
         if not self.db.is_latest_database():
             do_update = questionary.confirm("Database {:} is not at the latest version. Upgrade?".format(self.conf.get_selected_database()), auto_enter=False, default=False).ask()
@@ -1120,6 +1165,8 @@ class CLI:
                         continue
                 elif to_do == MenuCliOptions.DB:
                     self.menu_database_settings()
+                elif to_do == MenuCliOptions.REMOVE_STOCK_LOOP:
+                    self.menu_remove_loop()
                 # elif to_do == 'Digikey API Settings':     # todo: this
                 #     self.digikey_api_settings_menu()
 
@@ -1131,30 +1178,41 @@ class CLI:
             self.conf.save()
 
 
-def ask_for_database(config: CLIConfig):
-    db_id_name = questionary.text("What do you want to call this database").unsafe_ask()
-    is_server = questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mongoDb']).unsafe_ask()
-    if is_server == 'mongoDb':
-        host = questionary.text("What is the database host?").unsafe_ask()
-        ssl = questionary.confirm("Will the server be connected with SSL/TSL?", auto_enter=False, default=False).unsafe_ask()
-        auth_db = questionary.text("What is the database name you want to use (and auth database of authenticating if setup?)").unsafe_ask()
-        username = questionary.text("What is the database username (Enter nothing for un-auth)?").unsafe_ask()
-        if username == '':
-            password = ''
-            is_auth = False
-        else:
-            password = questionary.password("What is the database password?").unsafe_ask()
-            is_auth = True
-        config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth, ssl=ssl, auth_db=auth_db)
-        # try and get the database
-        try:
-            c = config.config.db_list[db_id_name]
-            config.get_database_client(c)
-        except config.DatabaseConnectionException:
-            console.print("Failed with new database...removing it")
-            config.delete_database(db_id_name)
-            raise KeyboardInterrupt()       # for now, can be improved later!
-    return db_id_name
+def ask_and_save_new_db_config(config: CLIConfig) -> Optional[Tuple[str, pymongo.database.Database]]:
+    """
+    Asks the user for a database info. Returns None if nothing is given, or if the internal operation fails
+    """
+    if (db_id_name := questionary.text("What do you want to call this database").ask()) is None:
+        return None
+    # todo: re-implement when we have more than just MongoDB
+    # if (is_server := questionary.select("Do you want the database to be a local file or is there a server running?", choices=['mongoDb']).ask()) is None:
+    #     return None
+    # if is_server == 'mongoDb':
+    if (host := questionary.text("What is the database host?").ask()) is None:
+        return None
+    if (ssl := questionary.confirm("Will the server be connected with SSL/TSL?", auto_enter=False, default=False).ask()) is None:
+        return None
+    if (auth_db := questionary.text("What is the database name you want to use (and auth database of authenticating if setup?)").ask()) is None:
+        return None
+    if (username := questionary.text("What is the database username (Enter nothing for un-auth)?").ask()) is None:
+        return None
+    if username == '':
+        password = ''
+        is_auth = False
+    else:
+        if (password := questionary.password("What is the database password?").ask()) is None:
+            return None
+        is_auth = True
+    config.save_database_as_mongo(database_name=db_id_name, username=username, password=password, host=host, authenticated=is_auth, ssl=ssl, auth_db=auth_db)
+    # try and get the database
+    try:
+        db_conn = config.get_database_connection(db_id_name)
+    except config.DatabaseConnectionException:
+        console.print("Failed with new database...removing it")
+        config.delete_database(db_id_name)
+        return None
+
+    return db_id_name, db_conn
 
 
 # def print_barcodes(conf: CLIConfig, database_connection: pymongo.database.Database):
@@ -1340,6 +1398,8 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
     """
     An importer sub-application that imports an existing "database" from a CSV file
 
+    TODO: untested
+
     Args:
         conf:
         database_connection:
@@ -1381,8 +1441,8 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
             for i, h in enumerate(header):
                 choices = [questionary.Choice(title=f"{v.showcase_name} (Required)" if v.required else f"{v.showcase_name}", value=i) for i, v in e7epd.spec.BasePartItems.items() if i not in column_to_key.values()]
                 if 'type' not in column_to_key.values():
-                    choices += [questionary.Choice(title=FormattedText([('blue', 'Part Type (Required)')]), value='type')]
-                choices += [questionary.Choice(title=FormattedText([('orange', 'None/Other')]), value='None')]
+                    choices += [questionary.Choice(title=FormattedText([('blue', 'Part Type (Required)')]).__repr__(), value='type')]
+                choices += [questionary.Choice(title=FormattedText([('orange', 'None/Other')]).__repr__(), value='None')]
                 a = questionary.select(f"What database key matches the column {i} ({h})?", choices=choices).unsafe_ask()
                 if a == 'None':
                     a = None
@@ -1407,14 +1467,14 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
         type_col = [i for i in column_to_key if column_to_key[i] == 'type'][0]      # get column where the type keyword exists
         column_to_key_parts = {}
         for line_i, line in enumerate(f):
-            line = line.strip().split(',')
-            if len(header) != len(line):
+            lineS = line.strip().split(',')
+            if len(header) != len(lineS):
                 console.print(f"[red]Line {line_i} is not the same length as the header. Exiting[/]")
                 return
-            line_item = line[type_col]
+            line_item = lineS[type_col]
             if line_item not in csv_type_to_internal_type:
                 pt = questionary.select(f"What is the part type for string '{line_item}'?", choices=part_type_choice).unsafe_ask()
-                csv_type_to_internal_type[line_item] = pt
+                csv_type_to_internal_type[str(line_item)] = pt
                 column_to_key_parts[pt.db_type_name] = {}
                 # ask the user which columns go with part-specific keys
                 for i, h in enumerate(header):
@@ -1423,7 +1483,7 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
                         continue
                     choices = [questionary.Choice(title=f"{v.showcase_name} (Required)" if v.required else f"{v.showcase_name}", value=i) for i, v in pt.items.items() if
                                i not in column_to_key.values() and i not in e7epd.spec.BasePartItems.keys()]
-                    choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None')]), value='None')]
+                    choices += [questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('orange', 'None')]).__repr__(), value='None')]
                     a = questionary.select(f"What database key matches the column {i} ({h})?", choices=choices).unsafe_ask()
                     if a == 'None':
                         a = None
@@ -1436,9 +1496,9 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
         f.readline()
         try:
             # Go thru, and for each line add it as a part
-            for line_i, line in enumerate(f):
+            for line_i, lineS in enumerate(f):
                 new_part = {}
-                line = line.strip().split(',')
+                line = lineS.strip().split(',')
                 if len(header) != len(line):
                     console.print(f"[red]Line {line_i} is not the same length as the header. Exiting[/]")
                     return
@@ -1494,17 +1554,90 @@ def importer_app(conf: CLIConfig, database_connection: pymongo.database.Database
         except e7epd.InputException:
             log.exception(f"Unable to add part {part}")
 
+def get_db(c: CLIConfig) -> Optional[pymongo.database.Database]:
+    db_conn = None
 
-def setup_logger(is_debug: bool = False):
+    # Check if we have any database to connect to. If the connection is successful, return the DB
+    if not c.is_any_db_config_stored():
+        console.print("Oh no, no database is configured. Let's get that settled")
+        ret = ask_and_save_new_db_config(c)
+        if ret is None:
+            console.print("No database given or connection failed. Exiting")
+            return None
+        db_name, db_conn = ret
+        return db_conn
+
+    # Check if we previously selected a database, otherwise ask the user for it
+    db_name = c.get_selected_database()
+    if not c.is_db_valid(db_name):
+        db_name = questionary.select(
+            "A database was not selected last time. Please select which database to connect to",
+            choices=c.get_stored_db_names()).ask()
+        if db_name is None:
+            console.print("No database is selected to communicate to. Please restart and select something")
+            return None
+
+    while db_conn is None:
+        try:
+            db_conn = c.get_database_connection(db_name)
+            break
+        # If we are not able to connect to the database for any reason!
+        except c.DatabaseConnectionException:
+            console.print("Unable to connect to database, please select what to try again")
+            db_name = questionary.select(
+                "A database was not selected last time. Please select which database to connect to",
+                choices=c.get_stored_db_names()).ask()
+            if db_name is None:
+                console.print("No database is selected to communicate to. Please restart and select something")
+                return None
+        # if we are still running an MySQL server, which has been deprecated!
+        except c.DatabaseDeprecatedException as e:
+            from e7epd import migration
+
+            if not migration.old_sql_available:
+                console.print("The migration tool cannot import sqlachemy. Run this with -v to see detailed logs")
+                return None
+            if questionary.confirm("Database is too old, add mongoDb server?").ask() is not True:
+                console.print("Exiting")
+                return None
+            old_sql_name = c.config.last_db
+            console.print("Enter the new MongoDB Connection")
+            ret = ask_and_save_new_db_config(c)
+            if ret is None:
+                console.print("No database given or unable to connect to new one. Exiting")
+                return None
+            new_db_name, new_db_conn = ret
+
+            if questionary.confirm("Want to migrate old data from the sql to mongo db?").ask():
+                try:
+                    migration.update_06_to_07(new_db_conn, e.args[1])
+                except Exception as e:
+                    logging.exception("Error then importing")
+                    console.print("Other exception happened :(. See logs above")
+                    c.delete_database(new_db_name)
+                    continue
+                console.print("Done with migration :)")
+            c.delete_database(old_sql_name)  # delete old sql db from name
+            c.config.last_db = new_db_name
+            c.save()
+
+            return new_db_conn
+
+    return db_conn
+
+def setup_logger(is_debug: int):
     l = logging.getLogger()
     l.setLevel(logging.DEBUG)
 
     rich_handler = RichHandler()
     rich_handler.setFormatter(logging.Formatter('%(name)s: %(message)s'))
-    if is_debug:
+    if is_debug != 0:
         rich_handler.setLevel(logging.DEBUG)
     else:
         rich_handler.setLevel(logging.INFO)
+
+    if is_debug <= 1:
+        logging.getLogger('pymongo').setLevel(logging.INFO)
 
     sys_log = logging.handlers.SysLogHandler()
     sys_log.setLevel(logging.DEBUG)
@@ -1515,7 +1648,7 @@ def setup_logger(is_debug: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(description='E7EPD CLI Application')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose mode', default=False)
+    parser.add_argument('-v', '--verbose', action='count', help='Enable verbose mode', default=0)
     parser.add_argument('--import_csv', help='Run the importer utility with the given CSV (not fully functional)', default=None)
     parser.add_argument('--export', action='store_true', help='Exports data in a csv or json format (not functional)', default=None)
     parser.add_argument('--import_order', action='store_true', help='Utility to import a order from a csv, optionally prints it to barcodes', default=None)
@@ -1525,66 +1658,17 @@ def main():
     setup_logger(args.verbose)
 
     c = CLIConfig()
-    db_name = None
-    db_conn = None
 
     if args.mock_db:
         console.print("Using fake database for testing")
         db_conn = e7epd.test.MockDB()
     else:
-        while 1:
-            try:
-                db_conn = c.get_database_connection(db_name)
-                break
-            # if no database was configured
-            except c.NoDatabaseException:
-                try:
-                    console.print("Oh no, no database is configured. Let's get that settled")
-                    ask_for_database(c)
-                except KeyboardInterrupt:
-                    console.print("No database given. Exiting")
-                    return
-            except c.NoLastDBSelectionException:
-                db_name = questionary.select("A database was not selected last time. Please select which database to connect to", choices=c.get_stored_db_names()).ask()
-                if db_name is None:
-                    console.print("No database is selected to communicate to. Please restart and select something")
-                    return
-            # if we are still running an MySQL server, which has been deprecated!
-            except c.DatabaseDeprecatedException as e:
-                from e7epd import migration
+        db_conn = get_db(c)
+        if db_conn is None:
+            return
 
-                if not migration.old_sql_available:
-                    console.print("The migration tool cannot import sqlachemy. Run this with -v to see detailed logs")
-                    return
-                if questionary.confirm("Database is too old, add mongoDb server?").ask() is not True:
-                    console.print("Exiting")
-                    return
-                old_sql_name = c.config.last_db
-                console.print("Enter the new MongoDB Connection")
-                try:
-                    new_db = ask_for_database(c)
-                except KeyboardInterrupt:
-                    console.print("No database given. Exiting")
-                    return
-
-                new_db_conn = c.get_database_connection(new_db)
-                if questionary.confirm("Want to migrate old data from the sql to mongo db?").ask():
-                    try:
-                        migration.update_06_to_07(new_db_conn, e.args[1])
-                    except Exception as e:
-                        logging.exception("Error then importing")
-                        console.print("Other exception happened :(. See logs above")
-                        c.delete_database(new_db)
-                        continue
-                    console.print("Done with migration :)")
-                c.delete_database(old_sql_name)     # delete old sql db from name
-                c.config.last_db = new_db
-                c.save()
-                continue
-            # If we are not able to connect to the database for any reason!
-            except c.DatabaseConnectionException:
-                console.print("Unable to connect to database")
-                return
+    # force the typechecker to be happy, as MockDB has valid signatures
+    db_conn: pymongo.database.Database
 
     assert db_conn is not None
 
