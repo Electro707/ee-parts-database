@@ -31,7 +31,15 @@ class MockDbCollection:
 
     def find_one_and_update(self, query=None, toUpdate=None):
         self.log.debug(f"Finding document with query {query} and updating with {toUpdate}")
-
+        for doc in self.documents:
+            if not self._matches(doc, query):
+                continue
+            for u in toUpdate:
+                if u == '$set':
+                    for key in toUpdate[u]:
+                        doc[key] = toUpdate[u][key]
+                else:
+                    doc[u] = toUpdate[u]
 
     def insert_one(self, document):
         self.log.debug(f"Inserting document {document}")
@@ -49,7 +57,17 @@ class MockDB:
 
         fakeData = None
         if name == 'parts':
-            fakeData = [{'ipn': 'SMF5V0A-E3-08', 'stock': 3}]
+            fakeData = [{'ipn': 'TEST-PART',
+                         'stock': 3, 'type': 'ic',
+                         'mfg_part_numb': 'TEST-PART-MFG',
+                         'ic_type': 'TEST',
+                         'manufacturer': 'e707',
+                         'package': 'tht',
+                         'storage': '',
+                         'comments': '',
+                         'datasheet': '',
+                         'user': '',
+                         }]
 
         if name not in self.collections:
             self.collections[name] = MockDbCollection(name, fakeData)

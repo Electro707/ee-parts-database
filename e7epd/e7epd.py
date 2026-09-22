@@ -434,6 +434,16 @@ class E7EPD:
         self.update_part_stock(ipn, new_qty)
 
     def remove_part_stock(self, ipn: str, remove_qty: int):
+        """
+        Removes `remove_qty` parts from part with part number `ipn`
+
+        Raises:
+            NegativeStock: If the component stock will go to zero
+        """
+        component = self.get_part_by_ipn(ipn)
+        assert component is not None
+        if remove_qty > component['stock']:
+            raise NegativeStock(component['stock'])
         self.add_part_stock(ipn, -remove_qty)
 
     def get_part_spec_by_db_name(self, db_name: str):

@@ -742,7 +742,7 @@ class CLI:
                     console.print("[red]Quantity must end with x, like 10x[/]")
                     continue
                 try:
-                    qtyN = int(qty[:1])
+                    qtyN = int(qty[:-1])
                 except ValueError:
                     console.print("[red]Quanitity must be an integer[/]")
                     continue
@@ -750,8 +750,12 @@ class CLI:
             if not self.db.check_if_already_in_db_by_ipn(ipn):
                 console.print("[red]IPN scanned/entered not valid[/]")
                 continue
-            self.db.remove_part_stock(ipn, qtyN)
-            console.print(f'[green]Removed {qtyN:d} of {ipn:s} from stock[/]')
+            try:
+                self.db.remove_part_stock(ipn, qtyN)
+            except e7epd.NegativeStock:
+                console.print(f'[red]Unable to remove part, stock will go negative[/]')
+            else:
+                console.print(f'[green]Removed {qtyN:d} of {ipn:s} from stock[/]')
 
     def menu_remove_stock_from_part(self):
         try:
