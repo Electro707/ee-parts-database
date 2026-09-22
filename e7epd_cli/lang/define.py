@@ -1,5 +1,5 @@
 """
-Auto generated using _gen_keys.py on 2026-09-20T01:26:15.691001
+Auto generated using _gen_keys.py on 2026-09-22T01:34:25.594433+00:00
 """
 from typing import Literal
 
@@ -30,6 +30,15 @@ PrintTexts = Literal[
     "menu_add_stock.no_change",
     "menu_add_stock.must_be_not_zero",
     "menu_add_stock.must_be_int",
+    "menu_remove_loop.intro_1",
+    "menu_remove_loop.intro_2",
+    "menu_remove_loop.loop_question",
+    "menu_remove_loop.exit",
+    "menu_remove_loop.must_end_x",
+    "menu_remove_loop.must_be_int",
+    "menu_remove_loop.ipn_not_valid",
+    "menu_remove_loop.unable_negative",
+    "menu_remove_loop.removed",
     "qty_invalid",
     "no_part_chosen",
 ]

@@ -51,7 +51,6 @@ class Locale:
                 return None
         return toRet
 
-
     def set_lang(self, lang: str):
         self.lang = lang
 

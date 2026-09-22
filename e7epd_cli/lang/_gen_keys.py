@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 from datetime import datetime
+from datetime import timezone
 from typing import *
 
 def get_keys(d: dict) -> List[str]:
@@ -29,7 +30,7 @@ def main():
 
     file_cont = []
     file_cont.append("\"\"\"")
-    file_cont.append(f"Auto generated using {Path(__file__).name} on {datetime.now().isoformat()}")
+    file_cont.append(f"Auto generated using {Path(__file__).name} on {datetime.now(timezone.utc).isoformat()}")
     file_cont.append("\"\"\"")
     file_cont.append("from typing import Literal")
     file_cont.append("")

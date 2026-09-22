@@ -1,0 +1,49 @@
+{
+  "enter_ipn": "Enter the IPN: ",
+  "ipn_not_given": "IPN not given",
+  "ipn_no_exist": "IPN must exist in database",
+  "must_have_mfg": "Must have a manufacturer part number",
+  "selecting_ipn_as_mfg": "Selecting current IPN as MGF part number",
+  "done_adding_parts": "Done adding parts",
+  "no_add_part": "Did not add parts to database",
+  "no_add_pcb": "Did not add PCB to database",
+  "must_choose_something": "Must choose something",
+  "canceled_part_lookup": "Canceled part lookup",
+  "ask_pcb": {
+    "comp_type_not_selected": "Component not selected",
+    "no_part_added": "Added nothing for parts"
+  },
+  "search_parts": {
+    "no_parts_type_comp": "Sorry, but there are no parts for that component type"
+  },
+  "ask_for_spec": {
+    "enter_value": "Enter value for {:s}",
+    "must_enter_spec": "You must enter this spec as it's required",
+    "invalid_eng_numb": "Invalid engineering number",
+    "val_not_percentage": "Inputted value is not a percentage",
+    "val_not_fraction": "Inputted value is not a proper fraction",
+    "value_not_type": "Inputted value is not a {:s}"
+  },
+  "menu_add_stock": {
+    "bug_no_comp": "Unable to find the desired components. This is a bug!'",
+    "list_comp_count": "There are {:d} parts of the selected component",
+    "ask_add": "Enter how much you want to add this part by: ",
+    "added_part": "Add to your stock :). There is now {:d} left of it.",
+    "no_change": "Ok, no stock is changed",
+    "must_be_not_zero": "Must be greater than 0",
+    "must_be_int": "Must be an integer"
+  },
+  "menu_remove_loop": {
+    "intro_1": "Scan your parts in this loop in order to remove them from your stock",
+    "intro_2": "If you want to remove multiple, type '10x ' and scan the IPN (note the space)",
+    "loop_question": "Scan barcode to remove: ",
+    "exit": "Done with removing parts",
+    "must_end_x": "Quantity must end with x, like 10x",
+    "must_be_int": "Quantity must be an integer",
+    "ipn_not_valid": "IPN entered not valid",
+    "unable_negative": "Unable to remove part, stock will go negative",
+    "removed": "Removed {:d} of {:s} from stock"
+  },
+  "qty_invalid": "Invalid quantity",
+  "no_part_chosen": "No part chosen"
+}

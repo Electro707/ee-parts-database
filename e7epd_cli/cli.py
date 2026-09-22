@@ -260,11 +260,11 @@ class CLI:
         # self.formatted_digikey_scan_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('blue', 'Scan Digikey 2D Barcode')]), value='dk_scan')
 
     def print_error(self, text_key: PrintTexts, *args):
-        to_print = self.lang.get(text_key).format(args)
+        to_print = self.lang.get(text_key).format(*args)
         console.print(f"[red]{to_print:s}[/]")
 
     def print(self, text_key: PrintTexts, *args):
-        to_print = self.lang.get(text_key).format(args)
+        to_print = self.lang.get(text_key).format(*args)
         console.print(f"{to_print:s}")
 
     @staticmethod
@@ -724,12 +724,12 @@ class CLI:
 
     def menu_remove_loop(self):
         """A loop that continuously removes parts from the database per scan, until CTRL+C is entered"""
-        console.print("Scan your parts in this loop in order to remove them from your stock")
-        console.print("If you want to remove multiple, type '10x ' and scan the IPN (note the space)")
+        self.print('menu_remove_loop.intro_1')
+        self.print('menu_remove_loop.intro_2')
         while True:
-            to_remove = questionary.text("Scan barcode to remove: ").ask()
+            to_remove = questionary.text(self.lang.get('menu_remove_loop.loop_question')).ask()
             if to_remove is None:
-                console.print("done with removing parts")
+                self.print('menu_remove_loop.exit')
                 return
             to_remove: str
             to_remove = to_remove.strip()
@@ -739,23 +739,23 @@ class CLI:
                 qtyN = 1
             else:
                 if not qty.endswith('x'):
-                    console.print("[red]Quantity must end with x, like 10x[/]")
+                    self.print_error('menu_remove_loop.must_end_x')
                     continue
                 try:
                     qtyN = int(qty[:-1])
                 except ValueError:
-                    console.print("[red]Quanitity must be an integer[/]")
+                    self.print_error('menu_remove_loop.must_be_int')
                     continue
 
             if not self.db.check_if_already_in_db_by_ipn(ipn):
-                console.print("[red]IPN scanned/entered not valid[/]")
+                self.print_error('menu_remove_loop.ipn_not_valid')
                 continue
             try:
                 self.db.remove_part_stock(ipn, qtyN)
             except e7epd.NegativeStock:
-                console.print(f'[red]Unable to remove part, stock will go negative[/]')
+                self.print_error('menu_remove_loop.unable_negative')
             else:
-                console.print(f'[green]Removed {qtyN:d} of {ipn:s} from stock[/]')
+                self.print('menu_remove_loop.removed', qtyN, ipn)
 
     def menu_remove_stock_from_part(self):
         try:

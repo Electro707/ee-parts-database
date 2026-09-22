@@ -6,6 +6,7 @@ __pycache__/
 # Delete and database and config files created
 *.db
 *.json
+!e7epd_cli/lang/*.json
 # Sphinx Build files
 **/_build
 # Python Build
