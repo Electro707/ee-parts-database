@@ -733,18 +733,28 @@ class CLI:
                 return
             to_remove: str
             to_remove = to_remove.strip()
-            qty, sep, ipn = to_remove.partition(" ")
-            if sep == '':   # if we don't have a space, the ipn is the whole string
-                ipn = qty
+            # qty, sep, ipn = to_remove.partition(" ")
+            m = re.match(r'(?:([0-9]*)x )?(.*)', to_remove)
+            if m is None:
+                self.print_error('menu_remove_loop.invalid_maybe_bug')
+                continue
+            qty = m.group(1)
+            ipn = m.group(2)
+
+            if ipn == '':
+                self.print_error('menu_remove_loop.nothing_entered')
+                continue
+
+            if qty is None:
                 qtyN = 1
             else:
-                if not qty.endswith('x'):
-                    self.print_error('menu_remove_loop.must_end_x')
-                    continue
                 try:
-                    qtyN = int(qty[:-1])
+                    qtyN = int(qty)
                 except ValueError:
                     self.print_error('menu_remove_loop.must_be_int')
+                    continue
+                if qtyN <= 0:
+                    self.print_error('menu_remove_loop.must_be_positive')
                     continue
 
             if not self.db.check_if_already_in_db_by_ipn(ipn):
@@ -758,6 +768,7 @@ class CLI:
                 self.print('menu_remove_loop.removed', qtyN, ipn)
 
     def menu_remove_stock_from_part(self):
+        raise DeprecationWarning("Do not use, should be replaced with loop function")
         try:
             allIpns = self._get_all_ipns()
             ipn = self._ask_ipn(allIpns)
@@ -804,10 +815,10 @@ class CLI:
             allIpns = self.db.get_all_parts_by_keys(None, 'ipn')
             ipn = self._ask_ipn(allIpns)
             if ipn is None:
-                console.print("[red]No IPN selected[/]")
+                self.print_error('ipn_not_given')
                 return
             if ipn not in allIpns:
-                console.print("[red]IPN not in database[/]")
+                self.print_error('ipn_no_exist')
                 return
             component = self.db.get_part_by_ipn(ipn)
             assert component is not None
@@ -838,7 +849,7 @@ class CLI:
                     to_update[to_change] = new_val
                     component[to_change] = new_val
                 except KeyboardInterrupt:
-                    console.print("Did not change spec")
+                    self.print('canceled_operation')
                     continue
         except KeyboardInterrupt:
             console.print("Did not change part")
@@ -937,7 +948,7 @@ class CLI:
         if allow_pcb:
             pcb_choice = questionary.Choice(title=prompt_toolkit.formatted_text.FormattedText([('purple', 'PCBs')]).__repr__())
             choice.insert(-1, pcb_choice)
-        component = questionary.select("Select the component you want do things with:", choices=choice).ask()
+        component = questionary.select(self.lang.get('choose_component_type.choose'), choices=choice).ask()
         if component is None or component == 'return':
             raise KeyboardInterrupt()
         elif component == 'PCBs':
@@ -955,38 +966,42 @@ class CLI:
                 return False
 
         if e7epd.label_making.available is not None:
-            console.print(f"Cannot make barcodes (due to \"{e7epd.label_making.available}\")")
+            self.print('menu_print_export_barcode.unavailable', e7epd.label_making.available)
             return
 
         assert self.printer is not None
 
         direct_print = False
         if self.printer:
-            r = questionary.select("Choose whether you want to export to directly print", choices=['Print to PTouch', 'Export to PDF']).ask()
+            r = questionary.select(self.lang.get('menu_print_export_barcode.choose_print_to.quest'),
+                                   choices=[
+                                       self.lang.get('menu_print_export_barcode.choose_print_to.ptouch'),
+                                       self.lang.get('menu_print_export_barcode.choose_print_to.pdf'),
+                                   ]).ask()
             if r is None:
                 return
             if 'Print' in r:
                 direct_print = True
         else:
-            console.print(f"Cannot directly print to printer, choosing export to pdf (due to \"{e7epd.label_making.direct_printing_failed}\")")
+            self.print('menu_print_export_barcode.unable_ptouch', e7epd.label_making.direct_printing_failed)
 
         if direct_print:
             if not self.printer.get_availability():
-                console.print("Unable to connect to a PTouch printer, reverting to export mode")
+                self.print('menu_print_export_barcode.unable_connect')
                 direct_print = False
 
         width = None
         export_path = None
         if not direct_print:
-            export_path = questionary.path("Select the pdf export path and name", default=os.getcwd() + '/').ask()
+            export_path = questionary.path(self.lang.get('menu_print_export_barcode.select_pdf_export'), default=os.getcwd() + '/').ask()
             if export_path is None or export_path == "":
                 return
             export_path = os.path.abspath(export_path)
             if os.path.isdir(export_path):
-                console.print("Selected path is a folder")
+                self.print_error('menu_print_export_barcode.path_is_dir')
                 return
 
-            width = questionary.text("What is the tape size in mm (printable area)", validate=isfloat).ask()
+            width = questionary.text(self.lang.get('menu_print_export_barcode.ask_tape_w'), validate=isfloat).ask()
             if width is None or width == "":
                 return
             width = float(width)
@@ -1028,32 +1043,32 @@ class CLI:
             WIPE = "Wipe Database"
             PRINT_INFO = "Print DB Info"
             SELECT_OTHER = "Select another database"
-        console.print(f"Current selected database is: {self.conf.get_selected_database()}")
+        self.print('menu_database_settings.print_selected', self.conf.get_selected_database())
         while True:
-            to_do = questionary.select("What do you want to? ", choices=list(MenuDatabaseSettingsOptions) + [self.return_formatted_choice]).ask()
+            to_do = questionary.select(self.lang.get('menu_database_settings.what_to_do'), choices=list(MenuDatabaseSettingsOptions) + [self.return_formatted_choice]).ask()
             if to_do is None or to_do == 'return':
                 break
             elif to_do == MenuDatabaseSettingsOptions.ADD:
                 ret = ask_and_save_new_db_config(self.conf)
                 if ret is None:
-                    console.print("Did not add a new database")
+                    self.print('menu_database_settings.did_not_add_db')
                     continue
-                console.print("Successfully added the new database")
+                self.print('menu_database_settings.added_db')
             elif to_do == MenuDatabaseSettingsOptions.WIPE:
                 self.wipe_database()
             elif to_do == MenuDatabaseSettingsOptions.SELECT_OTHER:
-                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names() + [self.return_formatted_choice]).ask()
+                db_name = questionary.select(self.lang.get('menu_database_settings.select_db'), choices=self.conf.get_stored_db_names() + [self.return_formatted_choice]).ask()
                 if db_name is None or db_name == 'return':
-                    console.print("Nothing new was selected")
+                    self.print("menu_database_settings.nothing_selected")
                     continue
                 self.conf.set_last_db(db_name)
-                console.print("Selected the database %s" % db_name)
-                console.print("[red]Please restart software for it to take into effect[/]")
+                self.print('menu_database_settings.selected_db', db_name)
+                self.print('menu_database_settings.restart_note')
                 raise KeyboardInterrupt()
             elif to_do == MenuDatabaseSettingsOptions.PRINT_INFO:
-                db_name = questionary.select("Select the new database to connect to:", choices=self.conf.get_stored_db_names()).ask()
+                db_name = questionary.select(self.lang.get('menu_database_settings.select_db'), choices=self.conf.get_stored_db_names()).ask()
                 if db_name is None:
-                    console.print("Nothing new was selected")
+                    self.print("menu_database_settings.nothing_selected")
                     continue
                 t = self.conf.get_database_connection_info(db_name)
                 if t['type'] == 'mongodb':
@@ -1106,11 +1121,10 @@ class CLI:
             SEARCH = "Search Part"
             ADD_PART = "Add new part"
             ADD_STOCK = "Add new stock"
-            REMOVE_STOCK = "Remove stock"
+            REMOVE_STOCK = "Remove stock (loop)"
             EDIT = "Edit Part"
             DB = "Database Settings"
             PCB = "PCB Submenu"
-            REMOVE_STOCK_LOOP = "Enter removal mode"
         # Check DB version before doing anything
         if not self.db.is_latest_database():
             do_update = questionary.confirm("Database {:} is not at the latest version. Upgrade?".format(self.conf.get_selected_database()), auto_enter=False, default=False).ask()
@@ -1153,10 +1167,11 @@ class CLI:
                     except KeyboardInterrupt:
                         continue
                 elif to_do == MenuCliOptions.REMOVE_STOCK:
-                    try:
-                        self.menu_remove_stock_from_part()
-                    except KeyboardInterrupt:
-                        continue
+                    self.menu_remove_loop()
+                    # try:
+                    #     self.menu_remove_stock_from_part()
+                    # except KeyboardInterrupt:
+                    #     continue
                 elif to_do == MenuCliOptions.EDIT:
                     try:
                         self.menu_edit_part()
@@ -1169,8 +1184,6 @@ class CLI:
                         continue
                 elif to_do == MenuCliOptions.DB:
                     self.menu_database_settings()
-                elif to_do == MenuCliOptions.REMOVE_STOCK_LOOP:
-                    self.menu_remove_loop()
                 # elif to_do == 'Digikey API Settings':     # todo: this
                 #     self.digikey_api_settings_menu()
 

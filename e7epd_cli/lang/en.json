@@ -9,6 +9,9 @@
   "no_add_pcb": "Did not add PCB to database",
   "must_choose_something": "Must choose something",
   "canceled_part_lookup": "Canceled part lookup",
+  "qty_invalid": "Invalid quantity",
+  "no_part_chosen": "No part chosen",
+  "canceled_operation": "Canceled operation, not changes made",
   "ask_pcb": {
     "comp_type_not_selected": "Component not selected",
     "no_part_added": "Added nothing for parts"
@@ -38,12 +41,38 @@
     "intro_2": "If you want to remove multiple, type '10x ' and scan the IPN (note the space)",
     "loop_question": "Scan barcode to remove: ",
     "exit": "Done with removing parts",
-    "must_end_x": "Quantity must end with x, like 10x",
     "must_be_int": "Quantity must be an integer",
+    "must_be_positive": "Quantity must be 1 or greater",
     "ipn_not_valid": "IPN entered not valid",
     "unable_negative": "Unable to remove part, stock will go negative",
-    "removed": "Removed {:d} of {:s} from stock"
+    "removed": "Removed {:d} of {:s} from stock",
+    "invalid_maybe_bug": "The entered string is invalid. Probably a bug?",
+    "nothing_entered": "No IPN entered"
   },
-  "qty_invalid": "Invalid quantity",
-  "no_part_chosen": "No part chosen"
+  "choose_component_type": {
+    "choose": "Select the component you want do things with:"
+  },
+  "menu_print_export_barcode": {
+    "unavailable": "Cannot make barcodes (due to \"{:s}\")",
+    "choose_print_to": {
+      "quest": "Choose whether you want to export to directly print",
+      "ptouch": "Print to PTouch",
+      "pdf": "Export to PDF"
+    },
+    "unable_ptouch": "Cannot directly print to printer, choosing export to pdf (due to \"{:s}\")",
+    "unable_connect": "Unable to connect to a PTouch printer, reverting to export mode",
+    "select_pdf_export": "Select the pdf export path and name",
+    "path_is_dir": "Selected path is a folder",
+    "ask_tape_w": "What is the tape size in mm (printable area)? "
+  },
+  "menu_database_settings": {
+    "print_selected": "Current selected database is: {:}",
+    "what_to_do": "What do you want to? ",
+    "did_not_add_db": "Did not add a new database",
+    "added_db": "Successfully added the new database",
+    "select_db": "Select the new database to connect to: ",
+    "nothing_selected": "Nothing new was selected",
+    "selected_db": "Selected the database {:s}",
+    "restart_note": "Please restart software for it to take into effect"
+  }
 }

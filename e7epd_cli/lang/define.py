@@ -1,5 +1,5 @@
 """
-Auto generated using _gen_keys.py on 2026-09-22T01:34:25.594433+00:00
+Auto generated using _gen_keys.py on 2026-09-24T04:50:01.009703+00:00
 """
 from typing import Literal
 
@@ -14,6 +14,9 @@ PrintTexts = Literal[
     "no_add_pcb",
     "must_choose_something",
     "canceled_part_lookup",
+    "qty_invalid",
+    "no_part_chosen",
+    "canceled_operation",
     "ask_pcb.comp_type_not_selected",
     "ask_pcb.no_part_added",
     "search_parts.no_parts_type_comp",
@@ -34,11 +37,29 @@ PrintTexts = Literal[
     "menu_remove_loop.intro_2",
     "menu_remove_loop.loop_question",
     "menu_remove_loop.exit",
-    "menu_remove_loop.must_end_x",
     "menu_remove_loop.must_be_int",
+    "menu_remove_loop.must_be_positive",
     "menu_remove_loop.ipn_not_valid",
     "menu_remove_loop.unable_negative",
     "menu_remove_loop.removed",
-    "qty_invalid",
-    "no_part_chosen",
+    "menu_remove_loop.invalid_maybe_bug",
+    "menu_remove_loop.nothing_entered",
+    "choose_component_type.choose",
+    "menu_print_export_barcode.unavailable",
+    "menu_print_export_barcode.choose_print_to.quest",
+    "menu_print_export_barcode.choose_print_to.ptouch",
+    "menu_print_export_barcode.choose_print_to.pdf",
+    "menu_print_export_barcode.unable_ptouch",
+    "menu_print_export_barcode.unable_connect",
+    "menu_print_export_barcode.select_pdf_export",
+    "menu_print_export_barcode.path_is_dir",
+    "menu_print_export_barcode.ask_tape_w",
+    "menu_database_settings.print_selected",
+    "menu_database_settings.what_to_do",
+    "menu_database_settings.did_not_add_db",
+    "menu_database_settings.added_db",
+    "menu_database_settings.select_db",
+    "menu_database_settings.nothing_selected",
+    "menu_database_settings.selected_db",
+    "menu_database_settings.restart_note",
 ]
